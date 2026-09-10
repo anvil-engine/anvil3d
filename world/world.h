@@ -3,10 +3,13 @@
 #include "formats/bsp.h"
 #include "render/render.h"
 #include "world/entities.h"
+#include "world/props.h"
 #include "world/visibility.h"
 #include "world/worldmesh.h"
 
 #include <memory>
+#include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -31,6 +34,7 @@ render::Mat4 viewProjection(const Camera& camera, float aspect);
 struct DrawStats : VisStats {
   size_t submittedFaces = 0;           // visible world faces with a drawable material
   size_t entities = 0, entitiesDrawn = 0; // brush entities with drawable faces / passing PVS + frustum
+  size_t props = 0, propsDrawn = 0;       // static props / passing fade distance, PVS + frustum
   size_t triangles = 0, draws = 0;     // world + entities
 };
 
@@ -54,11 +58,15 @@ public:
   size_t missingAssets() const { return missing_; }    // materials or textures that failed to resolve
   const std::string& skyName() const { return skyName_; } // worldspawn skyname as resolved ("" = no sky)
   size_t brushEntityCount() const { return entities_.size(); } // with drawable faces
+  size_t staticPropCount() const { return props_.size(); }     // with drawable meshes
 
 private:
   World(FileSystem& fs, render::Device* device) : fs_(fs), device_(device) {}
   void setupMaterials(const Mesh& mesh);
   void setupEntities(const Mesh& mesh);
+  void setupProps();
+  std::optional<render::Draw3D> material(const std::string& path, bool prop);
+  void warnOnce(const std::string& message); // gaps logged once per map, not once per material
   void setupSky();
   void appendVisible(uint32_t batch, std::vector<render::Draw3D>& out); // world batch, visible faces merged
   render::TextureHandle texture(std::string_view name);
@@ -91,6 +99,18 @@ private:
   std::vector<EntityInstance> entities_;
   std::vector<uint8_t> entityVisible_;  // per entity, this frame
   std::vector<render::Draw3D> translucentDraws_;
+  std::unordered_map<std::string, std::optional<render::Draw3D>> materialCache_; // key: [prop:]materials/...vmt
+  std::set<std::string> warned_;
+  render::MeshHandle propMesh_ = 0;
+  struct PropInstance {
+    render::Mat4 matrix;             // model -> world
+    bsp::Vec3 mins, maxs, center;    // world-space bounds
+    float fadeMaxDist = 0;           // > 0: not drawn beyond this distance (no fading)
+    std::vector<uint16_t> clusters;  // from the prop's leaf list
+    std::vector<render::Draw3D> opaque, translucent; // per studio mesh, tint = ambient light
+  };
+  std::vector<PropInstance> props_;
+  std::vector<uint8_t> propVisible_; // per prop, this frame
   render::MeshHandle skyMesh_ = 0;
   std::vector<render::Draw3D> skyDraws_; // one per cube face that has a material
   std::vector<MeshFace> faces_;

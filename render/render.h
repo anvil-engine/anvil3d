@@ -98,7 +98,7 @@ enum class Blend : uint8_t {
 };
 
 // Fixed modulate: base = texture2 ? mix(texture(u,v), texture2(u,v), blend) : texture(u,v);
-// rgb = base.rgb * lightmap(lu,lv).rgb * colorScale, alpha = base alpha.
+// rgb = base.rgb * lightmap(lu,lv).rgb * colorScale * tint, alpha = base alpha.
 // What the textures mean (base map, blend layer, lightmap, overbright factor) is decided by the material layer above.
 struct Draw3D {
   TextureHandle texture = 0;  // 0 = white
@@ -108,6 +108,7 @@ struct Draw3D {
   Blend blend = Blend::Opaque;
   float alphaRef = 0.5f;
   TextureHandle texture2 = 0; // 0 = no blend layer
+  float tint[3] = {1, 1, 1};  // per-draw RGB multiplier (e.g. a prop's ambient light)
 };
 
 // Column-major 4x4 (m[col * 4 + row]).

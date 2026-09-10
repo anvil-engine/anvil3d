@@ -656,10 +656,10 @@ bool VulkanDevice::createLayouts() {
   plci.pushConstantRangeCount = 1;
   plci.pPushConstantRanges = &push;
   if (!check(vkCreatePipelineLayout(device_, &plci, nullptr, &pipelineLayout_), "vkCreatePipelineLayout")) return false;
-  // 3D: set 0 = texture, 1 = lightmap, 2 = texture2 (same per-texture sets); 64 bytes viewProj + 16 bytes params
-  // (<= 128 guaranteed).
+  // 3D: set 0 = texture, 1 = lightmap, 2 = texture2 (same per-texture sets); 64 bytes viewProj + 32 bytes
+  // params/tint (<= 128 guaranteed).
   const VkDescriptorSetLayout sets3d[3] = {setLayout_, setLayout_, setLayout_};
-  const VkPushConstantRange push3d[2] = {{VK_SHADER_STAGE_VERTEX_BIT, 0, 64}, {VK_SHADER_STAGE_FRAGMENT_BIT, 64, 16}};
+  const VkPushConstantRange push3d[2] = {{VK_SHADER_STAGE_VERTEX_BIT, 0, 64}, {VK_SHADER_STAGE_FRAGMENT_BIT, 64, 32}};
   plci.setLayoutCount = 3;
   plci.pSetLayouts = sets3d;
   plci.pushConstantRangeCount = 2;
@@ -1135,7 +1135,8 @@ void VulkanDevice::draw3d(MeshHandle mesh, const Mat4& viewProj, std::span<const
     if (p != bound) vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, bound = p);
     const VkDescriptorSet sets[3] = {texture(d.texture).set, texture(d.lightmap).set, texture(d.texture2).set};
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout3d_, 0, 3, sets, 0, nullptr);
-    const float params[4] = {d.colorScale, d.blend == Blend::AlphaTest ? d.alphaRef : 0.0f, d.texture2 ? 1.0f : 0.0f, 0};
+    const float params[8] = {d.colorScale, d.blend == Blend::AlphaTest ? d.alphaRef : 0.0f, d.texture2 ? 1.0f : 0.0f, 0,
+                             d.tint[0], d.tint[1], d.tint[2], 1};
     vkCmdPushConstants(cmd, pipelineLayout3d_, VK_SHADER_STAGE_FRAGMENT_BIT, 64, sizeof(params), params);
     vkCmdDrawIndexed(cmd, d.indexCount, 1, d.firstIndex, 0, 0);
   }

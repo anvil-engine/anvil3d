@@ -55,6 +55,14 @@ struct BspBuilder {
     for (int32_t off : {20, 20, 21, 21}) add(bsp::LUMP_VISIBILITY, off);
     lumps[bsp::LUMP_VISIBILITY] += std::string("\x03\x00\x01", 3);
 
+    // Ambient lighting: leaf 0 has one sample (cube faces 0..5 = grey levels 10..60, exponent 0), leaf 1 none.
+    add(bsp::LUMP_LEAF_AMBIENT_INDEX, bsp::LeafAmbient{1, 0});
+    add(bsp::LUMP_LEAF_AMBIENT_INDEX, bsp::LeafAmbient{0, 1});
+    bsp::AmbientSample sample{};
+    for (int f = 0; f < 6; ++f) sample.cube[f][0] = sample.cube[f][1] = sample.cube[f][2] = uint8_t(10 * (f + 1));
+    sample.x = sample.y = sample.z = 128;
+    add(bsp::LUMP_LEAF_AMBIENT_LIGHTING, sample);
+
     // Power-2 displacement on the face: 5x5 vertices.
     std::string disp(176, '\0');
     const int32_t power = 2;
@@ -166,6 +174,8 @@ int main(int argc, char** argv) {
     bsp::pvs(*map, -1, vis);
     CHECK(vis.size() == 1 && vis[0] == 0xFF);
     CHECK(map->dispInfos.size() == 1 && map->dispInfos[0].power == 2 && map->dispVerts.size() == 25);
+    CHECK(map->leafAmbient.size() == 2 && map->leafAmbient[0].count == 1 && map->ambientSamples.size() == 1 &&
+          map->ambientSamples[0].cube[5][0] == 60 && map->ambientSamples[0].x == 128);
     CHECK(map->staticPropVersion == 6 && map->staticProps.size() == 1 &&
           map->staticPropModels[0] == "models/props_c17/oildrum001.mdl" && map->staticProps[0].origin.x == 16);
   }
@@ -202,6 +212,8 @@ int main(int argc, char** argv) {
   CHECK(broken([](BspBuilder& c) { c.lumps[bsp::LUMP_DISP_VERTS].resize(20 * 24); }));                    // too few verts
   CHECK(broken([](BspBuilder& c) { c.sprp.replace(4 + 128 + 4 + 2 + 4 + 24, 2, "\x03\0", 2); }));       // bad propType
   CHECK(broken([](BspBuilder& c) { c.sprp.resize(c.sprp.size() - 1); }));                                 // truncated
+  CHECK(broken([](BspBuilder& c) { c.lumps[bsp::LUMP_LEAF_AMBIENT_INDEX].replace(2, 2, "\x05\0", 2); }));    // sample 5
+  CHECK(broken([](BspBuilder& c) { c.lumps[bsp::LUMP_LEAF_AMBIENT_INDEX].resize(4); }));                     // 1 of 2 leafs
 
   // Header/lump-table corruption.
   std::string file = b.build();

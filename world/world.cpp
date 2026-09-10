@@ -96,12 +96,13 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   }
   w->setupMaterials(mesh);
   w->setupEntities(mesh);
+  w->setupProps();
   w->setupSky();
   w->faces_ = mesh.faces;
   w->worldFaceCount_ = mesh.models.empty() ? 0 : mesh.models[0].faceCount; // model 0 sorts first
   w->visibility_ = std::make_unique<Visibility>(w->map_, std::span(w->faces_).first(w->worldFaceCount_));
-  ANVIL_INFO("world", "%s: %zu batches, %zu textures, %zu brush entities, %zu missing", path.c_str(),
-             mesh.batches.size(), w->textures_.size(), w->entities_.size(), w->missing_);
+  ANVIL_INFO("world", "%s: %zu batches, %zu textures, %zu brush entities, %zu static props, %zu missing", path.c_str(),
+             mesh.batches.size(), w->textures_.size(), w->entities_.size(), w->props_.size(), w->missing_);
   return w;
 }
 
@@ -112,6 +113,7 @@ World::~World() {
     for (render::TextureHandle h : unique) device_->destroyTexture(h);
     device_->destroyMesh(mesh_);
     device_->destroyMesh(skyMesh_);
+    device_->destroyMesh(propMesh_);
   }
   if (pak_) fs_.removeArchive(pak_);
 }
@@ -139,76 +141,144 @@ render::TextureHandle World::texture(std::string_view name) {
   return textures_[path] = handle;
 }
 
-void World::setupMaterials(const Mesh& mesh) {
-  // Per-shader gaps are logged once per map, not once per material.
-  std::set<std::string> warned;
-  auto warnOnce = [&](const std::string& message) {
-    if (warned.insert(message).second) ANVIL_WARN("world", "%s", message.c_str());
-  };
-  const vmt::IncludeFn include = [&](std::string_view p) { return fs_.readFile(p, "GAME"); };
-  // Material per texdata, shared by every model's batches. nullopt = not drawn (e.g. water).
-  std::unordered_map<int32_t, std::optional<render::Draw3D>> byTexdata;
-  auto resolve = [&](int32_t texdata) -> std::optional<render::Draw3D> {
-    const std::string& name = map_.texdataNames[size_t(map_.texdatas[size_t(texdata)].nameStringTableId)];
-    const std::string path = "materials/" + lower(name) + ".vmt";
-    render::Draw3D d;
+void World::warnOnce(const std::string& message) {
+  if (warned_.insert(message).second) ANVIL_WARN("world", "%s", message.c_str());
+}
+
+// Material -> draw template. Brush surfaces (prop = false) are LightmappedGeneric-style: texture * lightmap * 2.
+// Props (prop = true) have no lightmap: texture * tint, the tint set per instance. nullopt = not drawn.
+std::optional<render::Draw3D> World::material(const std::string& path, bool prop) {
+  const std::string key = (prop ? "prop:" : "") + path;
+  if (const auto it = materialCache_.find(key); it != materialCache_.end()) return it->second;
+  auto& slot = materialCache_[key];
+  render::Draw3D d;
+  if (!prop) {
     d.lightmap = lightmap_;
     d.colorScale = 2.0f; // lightmap atlas stores shade / 2 (see world::Mesh::lightmap)
-    std::string err = "not found";
-    const auto text = fs_.readFile(path, "GAME");
-    const auto m = text ? vmt::parse(*text, include, &err) : std::nullopt;
-    if (!m) {
-      ANVIL_WARN("world", "Material %s: %s", path.c_str(), err.c_str());
-      ++missing_;
-      d.texture = error_;
-      return d;
-    }
-    const std::string shader = lower(m->shader);
-    if (shader == "water" || shader == "refract") { // no base texture to show; needs its own shader
-      warnOnce("STUB: " + m->shader + " surfaces are not drawn");
-      return std::nullopt;
-    }
-    if (shader == "unlitgeneric") {
-      d.lightmap = 0;
-      d.colorScale = 1.0f;
-    } else if (shader == "worldvertextransition") {
-      // Displacement alpha blends $basetexture -> $basetexture2 (vertex blend weight, see world::Mesh).
-      // $blendmodulatetexture and $basetexturetransform2 are not applied.
-      if (m->has("$blendmodulatetexture") || m->has("$basetexturetransform2"))
-        warnOnce("PARTIAL: WorldVertexTransition $blendmodulatetexture / $basetexturetransform2 ignored");
-      const std::string_view base2 = m->get("$basetexture2");
-      if (!base2.empty()) d.texture2 = texture(base2);
-    } else if (shader != "lightmappedgeneric") {
-      warnOnce("PARTIAL: shader " + m->shader + " drawn as LightmappedGeneric");
-    }
-    const std::string_view base = m->get("$basetexture");
-    if (lower(base).starts_with("_rt_")) { // engine render target (e.g. func_monitor camera), not a file
-      warnOnce("STUB: render-target textures (" + std::string(base) + ") not implemented; surfaces not drawn");
-      return std::nullopt;
-    }
-    d.texture = base.empty() ? 0 : texture(base);
-    if (m->flag("$translucent") || m->flag("$additive")) {
-      d.blend = render::Blend::Translucent; // ponytail: additive approximated as alpha blend; unsorted
-    } else if (m->flag("$alphatest")) {
-      d.blend = render::Blend::AlphaTest;
-      const std::string ref(m->get("$alphatestreference", "0.5"));
-      d.alphaRef = std::strtof(ref.c_str(), nullptr);
-    }
-    return d;
-  };
+  }
+  const vmt::IncludeFn include = [&](std::string_view p) { return fs_.readFile(p, "GAME"); };
+  std::string err = "not found";
+  const auto text = fs_.readFile(path, "GAME");
+  const auto m = text ? vmt::parse(*text, include, &err) : std::nullopt;
+  if (!m) {
+    ANVIL_WARN("world", "Material %s: %s", path.c_str(), err.c_str());
+    ++missing_;
+    d.texture = error_;
+    return slot = d;
+  }
+  const std::string shader = lower(m->shader);
+  if (shader == "water" || shader == "refract") { // no base texture to show; needs its own shader
+    warnOnce("STUB: " + m->shader + " surfaces are not drawn");
+    return slot = std::nullopt;
+  }
+  if (shader == "unlitgeneric") {
+    d.lightmap = 0;
+    d.colorScale = 1.0f;
+  } else if (prop) {
+    if (shader == "vertexlitgeneric") warnOnce("PARTIAL: VertexLitGeneric props lit by one leaf ambient sample per prop");
+    else warnOnce("PARTIAL: prop shader " + m->shader + " drawn as VertexLitGeneric");
+  } else if (shader == "worldvertextransition") {
+    // Displacement alpha blends $basetexture -> $basetexture2 (vertex blend weight, see world::Mesh).
+    if (m->has("$blendmodulatetexture") || m->has("$basetexturetransform2"))
+      warnOnce("PARTIAL: WorldVertexTransition $blendmodulatetexture / $basetexturetransform2 ignored");
+    const std::string_view base2 = m->get("$basetexture2");
+    if (!base2.empty()) d.texture2 = texture(base2);
+  } else if (shader != "lightmappedgeneric") {
+    warnOnce("PARTIAL: shader " + m->shader + " drawn as LightmappedGeneric");
+  }
+  const std::string_view base = m->get("$basetexture");
+  if (lower(base).starts_with("_rt_")) { // engine render target (e.g. func_monitor camera), not a file
+    warnOnce("STUB: render-target textures (" + std::string(base) + ") not implemented; surfaces not drawn");
+    return slot = std::nullopt;
+  }
+  d.texture = base.empty() ? 0 : texture(base);
+  if (m->flag("$translucent") || m->flag("$additive")) {
+    d.blend = render::Blend::Translucent; // ponytail: additive approximated as alpha blend; unsorted
+  } else if (m->flag("$alphatest")) {
+    d.blend = render::Blend::AlphaTest;
+    const std::string ref(m->get("$alphatestreference", "0.5"));
+    d.alphaRef = std::strtof(ref.c_str(), nullptr);
+  }
+  return slot = d;
+}
+
+void World::setupMaterials(const Mesh& mesh) {
   modelDraws_.resize(map_.models.size());
   for (uint32_t i = 0; i < mesh.batches.size(); ++i) {
     const Batch& b = mesh.batches[i];
-    auto it = byTexdata.find(b.texdata);
-    if (it == byTexdata.end()) it = byTexdata.emplace(b.texdata, resolve(b.texdata)).first;
-    render::Draw3D d = it->second.value_or(render::Draw3D{});
+    const std::string& name = map_.texdataNames[size_t(map_.texdatas[size_t(b.texdata)].nameStringTableId)];
+    const std::optional<render::Draw3D> m = material("materials/" + lower(name) + ".vmt", false);
+    render::Draw3D d = m.value_or(render::Draw3D{});
     d.firstIndex = b.firstIndex;
-    d.indexCount = it->second ? b.indexCount : 0;
+    d.indexCount = m ? b.indexCount : 0;
     materials_.push_back({d, b.firstFace, b.faceCount});
-    if (!it->second) continue;
+    if (!m) continue;
     auto& list = d.blend == render::Blend::Translucent ? modelDraws_[b.model].translucent : modelDraws_[b.model].opaque;
     list.push_back(i);
   }
+}
+
+void World::setupProps() {
+  if (map_.staticProps.empty()) return;
+  const PropGeometry geometry = loadPropGeometry(fs_, map_.staticPropModels);
+  if (device_ && !geometry.indices.empty()) propMesh_ = device_->createMesh(geometry.vertices, geometry.indices);
+  constexpr int kDxLevel = 95; // materials resolve as dxlevel 95 (DECISIONS.md)
+  constexpr uint8_t kFades = 0x1, kUseLightingOrigin = 0x2; // static prop lump flags
+  size_t neutral = 0;
+  for (const bsp::StaticProp& sp : map_.staticProps) {
+    const PropModel& pm = geometry.models[sp.propType]; // propType validated at load
+    if (!pm.loaded) {
+      ++missing_;
+      continue;
+    }
+    if ((sp.minDxLevel && kDxLevel < sp.minDxLevel) || (sp.maxDxLevel && kDxLevel > sp.maxDxLevel)) continue;
+    PropInstance inst;
+    const Transform t{sp.origin, sp.angles};
+    inst.matrix = t.matrix();
+    transformBox(t, pm.mins, pm.maxs, inst.mins, inst.maxs);
+    inst.center = {(inst.mins.x + inst.maxs.x) / 2, (inst.mins.y + inst.maxs.y) / 2, (inst.mins.z + inst.maxs.z) / 2};
+    inst.fadeMaxDist = (sp.flags & kFades) ? sp.fadeMaxDist : 0.0f;
+    for (uint32_t k = sp.firstLeaf; k < uint32_t(sp.firstLeaf) + sp.leafCount; ++k) { // ranges validated at load
+      const int16_t cluster = map_.leafs[map_.staticPropLeafs[k]].cluster;
+      if (cluster >= 0) inst.clusters.push_back(uint16_t(cluster));
+    }
+    std::sort(inst.clusters.begin(), inst.clusters.end());
+    inst.clusters.erase(std::unique(inst.clusters.begin(), inst.clusters.end()), inst.clusters.end());
+    // Light: leaf ambient at the lighting origin if flagged, else the bounds centre, else the origin (centres of
+    // props sunk into walls often land in solid leaves); linear -> gamma like the lightmaps.
+    float rgb[3] = {0.5f, 0.5f, 0.5f};
+    if (!ambientLight(map_, (sp.flags & kUseLightingOrigin) ? sp.lightingOrigin : inst.center, rgb) &&
+        !ambientLight(map_, sp.origin, rgb)) {
+      rgb[0] = rgb[1] = rgb[2] = 0.5f;
+      ++neutral;
+    }
+    float tint[3];
+    for (int k = 0; k < 3; ++k) tint[k] = std::pow(rgb[k], 1.0f / 2.2f);
+    for (size_t i = 0; i < pm.meshes.size(); ++i) {
+      const int mat = pm.info.materialFor(pm.info.meshes[i], size_t(std::max(sp.skin, 0)));
+      if (mat < 0 || size_t(mat) >= pm.info.materials.size()) continue;
+      // First material directory holding the file wins (studio search order).
+      std::string path;
+      for (const std::string& dir : pm.info.materialDirs) {
+        std::string candidate = lower("materials/" + dir + pm.info.materials[size_t(mat)] + ".vmt");
+        std::replace(candidate.begin(), candidate.end(), '\\', '/');
+        if (path.empty()) path = candidate; // reported as missing if no directory has it
+        if (fs_.exists(candidate, "GAME")) {
+          path = candidate;
+          break;
+        }
+      }
+      std::optional<render::Draw3D> d = material(path, true);
+      if (!d) continue;
+      d->firstIndex = pm.meshes[i].firstIndex;
+      d->indexCount = pm.meshes[i].indexCount;
+      std::copy(tint, tint + 3, d->tint);
+      (d->blend == render::Blend::Translucent ? inst.translucent : inst.opaque).push_back(*d);
+    }
+    if (!inst.opaque.empty() || !inst.translucent.empty()) props_.push_back(std::move(inst));
+  }
+  if (neutral) ANVIL_WARN("world", "PARTIAL: %zu of %zu static props have no leaf ambient sample: neutral grey light", neutral,
+                          map_.staticProps.size());
 }
 
 void World::setupEntities(const Mesh& mesh) {
@@ -289,7 +359,25 @@ void World::draw(const Camera& camera, float aspect, bool usePvs) {
     entityVisible_[i] = visibility_->visible(entities_[i].clusters, entities_[i].mins, entities_[i].maxs);
     stats_.entitiesDrawn += entityVisible_[i];
   }
-  // Opaque world, opaque entities, then translucent world and entities: translucent surfaces never write depth,
+  stats_.props = props_.size();
+  propVisible_.resize(props_.size());
+  for (size_t i = 0; i < props_.size(); ++i) {
+    const PropInstance& p = props_[i];
+    const float dx = p.center.x - camera.origin.x, dy = p.center.y - camera.origin.y, dz = p.center.z - camera.origin.z;
+    const bool inRange = p.fadeMaxDist <= 0 || dx * dx + dy * dy + dz * dz <= p.fadeMaxDist * p.fadeMaxDist;
+    propVisible_[i] = inRange && visibility_->visible(p.clusters, p.mins, p.maxs);
+    stats_.propsDrawn += propVisible_[i];
+  }
+  auto drawProps = [&](bool translucent) {
+    for (size_t i = 0; i < props_.size(); ++i) {
+      if (!propVisible_[i]) continue;
+      const std::vector<render::Draw3D>& list = translucent ? props_[i].translucent : props_[i].opaque;
+      for (const render::Draw3D& d : list) stats_.triangles += d.indexCount / 3;
+      stats_.draws += list.size();
+      if (device_ && propMesh_ && !list.empty()) device_->draw3d(propMesh_, viewProj * props_[i].matrix, list);
+    }
+  };
+  // Opaque world, entities and props, then the translucent ones: translucent surfaces never write depth,
   // so anything drawn after them would cover them.
   std::vector<render::Draw3D> entityDraws;
   auto drawEntities = [&](bool translucent) {
@@ -306,8 +394,10 @@ void World::draw(const Camera& camera, float aspect, bool usePvs) {
   stats_.draws += frameDraws_.size() + translucentDraws_.size();
   if (device_ && mesh_) device_->draw3d(mesh_, viewProj, frameDraws_);
   drawEntities(false);
+  drawProps(false);
   if (device_ && mesh_) device_->draw3d(mesh_, viewProj, translucentDraws_);
   drawEntities(true);
+  drawProps(true);
 }
 
 // Visible faces of a world batch -> index ranges; neighbours in the index buffer merge into one draw.

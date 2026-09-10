@@ -118,6 +118,17 @@ struct DispVert {
   float alpha; // blend weight for WorldVertexTransition
 };
 
+// Per-leaf ambient light sample (lump versions of v20 maps): a light cube of 6 ColorRGBExp32 values in the
+// order +X, -X, +Y, -Y, +Z, -Z, at a position inside the leaf bounds (0..255 across each axis).
+struct AmbientSample {
+  uint8_t cube[6][4];
+  uint8_t x, y, z, pad;
+};
+
+struct LeafAmbient {
+  uint16_t count, first; // range in Map::ambientSamples
+};
+
 // Static prop instance from the "sprp" game lump (versions 4-6), normalized.
 struct StaticProp {
   Vec3 origin;
@@ -157,6 +168,9 @@ struct Map {
   std::string visData;                   // raw visibility lump; use pvs()
   std::vector<int32_t> pvsOffsets;       // per cluster, into visData
 
+  std::vector<LeafAmbient> leafAmbient;       // parallel to leafs; empty when the map has none (v19 leafs)
+  std::vector<AmbientSample> ambientSamples; // LDR set, HDR when the map has no LDR set
+
   std::vector<DispInfo> dispInfos;
   std::vector<DispVert> dispVerts;
 
@@ -183,6 +197,10 @@ enum Lump {
   LUMP_LEAFFACES = 16,
   LUMP_DISPINFO = 26,
   LUMP_DISP_VERTS = 33,
+  LUMP_LEAF_AMBIENT_INDEX_HDR = 51,
+  LUMP_LEAF_AMBIENT_INDEX = 52,
+  LUMP_LEAF_AMBIENT_LIGHTING_HDR = 55,
+  LUMP_LEAF_AMBIENT_LIGHTING = 56,
   LUMP_GAME_LUMP = 35,
   LUMP_PAKFILE = 40,
   LUMP_LIGHTING_HDR = 53,

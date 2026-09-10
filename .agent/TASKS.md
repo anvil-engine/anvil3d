@@ -33,7 +33,7 @@
 3. [x] World mesh builder: faces -> polygons, displacement grids, lightmap atlas; LightmappedGeneric basics; `map <name>`; free camera.
 3a. [x] WorldVertexTransition blend ($basetexture2 by displacement alpha). [ ] UnlitTwoTexture; translucent sorting.
 3b. [x] Brush entities (models *N) placed by entity origin/angles (static). [x] 2D sky. [ ] sky_camera 3D skybox. [ ] render targets (_rt_camera).
-4. [ ] Static props via studio loader.
+4. [x] Static props via studio loader (ambient-only lighting). [ ] Prop lighting: direct light / VHV per-vertex lighting; LODs.
 5. [x] PVS/frustum culling (per face; no areaportals, no occlusion).
 6. [ ] Lightmap styles / bumped lightmaps; HDR lighting lump path with tonemapping.
 6. [x] devui draws through render::2d.

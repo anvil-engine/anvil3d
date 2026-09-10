@@ -7,6 +7,7 @@ layout(set = 2, binding = 0) uniform sampler2D tex2;
 
 layout(push_constant) uniform Push {
   layout(offset = 64) vec4 params; // x: color scale, y: alpha reference (0 = no test), z: 1 = blend tex2
+  vec4 tint;                       // rgb multiplier
 } pc;
 
 layout(location = 0) in vec2 uv;
@@ -18,5 +19,5 @@ void main() {
   vec4 base = texture(tex, uv);
   if (pc.params.z > 0.0) base = mix(base, texture(tex2, uv), clamp(blend, 0.0, 1.0));
   if (base.a < pc.params.y) discard;
-  outColor = vec4(base.rgb * texture(lightmap, lightmapUV).rgb * pc.params.x, base.a);
+  outColor = vec4(base.rgb * texture(lightmap, lightmapUV).rgb * pc.params.x * pc.tint.rgb, base.a);
 }

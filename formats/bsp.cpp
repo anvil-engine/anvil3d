@@ -18,6 +18,8 @@ static_assert(sizeof(Face) == 56);
 static_assert(sizeof(Model) == 48);
 static_assert(sizeof(Node) == 32);
 static_assert(sizeof(DispVert) == 20);
+static_assert(sizeof(AmbientSample) == 28);
+static_assert(sizeof(LeafAmbient) == 4);
 
 namespace {
 
@@ -295,6 +297,10 @@ bool validate(const Map& m, std::string& error) {
     if (f.dispinfo != -1 && (f.dispinfo < 0 || size_t(f.dispinfo) >= m.dispInfos.size()))
       return bad("face dispinfo out of range");
 
+  if (!m.leafAmbient.empty() && m.leafAmbient.size() != m.leafs.size()) return bad("leaf ambient index size mismatch");
+  for (const LeafAmbient& a : m.leafAmbient)
+    if (size_t(a.first) + a.count > m.ambientSamples.size()) return bad("leaf ambient samples out of range");
+
   for (uint16_t leaf : m.staticPropLeafs)
     if (leaf >= m.leafs.size()) return bad("static prop leaf out of range");
   for (const StaticProp& sp : m.staticProps)
@@ -321,7 +327,11 @@ std::optional<Map> load(std::string_view file, std::string* error) {
   if (ok && map.faces.empty()) ok = p.array(LUMP_FACES_HDR, map.faces);
   if (ok && lighting.empty()) ok = p.raw(LUMP_LIGHTING_HDR, lighting);
   ok = ok && p.array(LUMP_NODES, map.nodes) && parseLeafs(p, map) && p.array(LUMP_LEAFFACES, map.leafFaces) &&
-       parseVis(p, map) && parseDisp(p, map) && parseStaticProps(p, map);
+       parseVis(p, map) && parseDisp(p, map) && parseStaticProps(p, map) &&
+       p.array(LUMP_LEAF_AMBIENT_INDEX, map.leafAmbient) && p.array(LUMP_LEAF_AMBIENT_LIGHTING, map.ambientSamples);
+  // HDR-only maps: take both ambient lumps from the HDR set so index and samples match.
+  if (ok && map.ambientSamples.empty())
+    ok = p.array(LUMP_LEAF_AMBIENT_INDEX_HDR, map.leafAmbient) && p.array(LUMP_LEAF_AMBIENT_LIGHTING_HDR, map.ambientSamples);
 
   if (ok) {
     map.entities.assign(entities.substr(0, entities.find('\0')));

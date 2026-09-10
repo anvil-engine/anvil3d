@@ -3,6 +3,7 @@
 #include "filesystem/filesystem.h"
 #include "filesystem/gameinfo.h"
 #include "world/entities.h"
+#include "world/props.h"
 #include "world/sky.h"
 #include "world/visibility.h"
 #include "world/world.h"
@@ -222,9 +223,9 @@ int realData(const std::filesystem::path& modDir) {
       for (size_t i = 0; i + 3 < px.size() && px.size() == all.size(); i += 4)
         differ += std::memcmp(&px[i], &all[i], 3) != 0;
       std::printf("spawn yaw +%3.0f: cluster %d, %zu faces, PVS %zu, frustum %zu, submitted %zu (%zu triangles, "
-                  "%zu draws); brush entities %zu/%zu; frustum only %zu; PVS on/off differing pixels %zu\n", yaw, s.cluster,
-                  s.faces, s.pvsFaces, s.frustumFaces, s.submittedFaces, s.triangles, s.draws, s.entitiesDrawn,
-                  s.entities, frustumOnly, differ);
+                  "%zu draws); brush entities %zu/%zu; props %zu/%zu; frustum only %zu; PVS on/off differing pixels %zu\n",
+                  yaw, s.cluster, s.faces, s.pvsFaces, s.frustumFaces, s.submittedFaces, s.triangles, s.draws,
+                  s.entitiesDrawn, s.entities, s.propsDrawn, s.props, frustumOnly, differ);
       CHECK(s.cluster >= 0 && s.pvsFaces < s.faces && s.frustumFaces <= s.pvsFaces && s.submittedFaces <= s.frustumFaces);
       CHECK(px.size() == all.size() && differ == 0);
     }
@@ -373,6 +374,25 @@ int main(int argc, char** argv) {
     t = {{5, 0, 0}, {0, 90, 0}};
     world::transformBox(t, {0, 0, 0}, {10, 2, 1}, bmin, bmax);
     CHECK(near(bmin.x, 3) && near(bmax.x, 5) && near(bmin.y, 0) && near(bmax.y, 10) && near(bmax.z, 1));
+  }
+
+  // Static prop light: nearest ambient sample of the point's leaf, averaged over the 6 cube faces (linear).
+  {
+    bsp::Map amb = visMap();
+    amb.leafs[0].mins[0] = 0;
+    amb.leafs[0].maxs[0] = 128;
+    bsp::AmbientSample near0{}, far0{};
+    for (int f = 0; f < 6; ++f) near0.cube[f][0] = uint8_t(f < 3 ? 255 : 0); // red: 3 of 6 faces at 1.0 -> 0.5
+    far0.cube[0][1] = 255;                                                      // green, one face
+    far0.x = 255;                                                               // at x = 128
+    amb.ambientSamples = {near0, far0};
+    amb.leafAmbient = {{2, 0}, {0, 0}};
+    float rgb[3];
+    CHECK(world::ambientLight(amb, {10, 32, 10}, rgb) && near(rgb[0], 0.5f) && near(rgb[1], 0));
+    CHECK(world::ambientLight(amb, {120, 32, 10}, rgb) && near(rgb[0], 0) && near(rgb[1], 1 / 6.0f));
+    CHECK(!world::ambientLight(amb, {200, 32, 10}, rgb)); // leaf 1 has no samples
+    amb.leafAmbient.clear();
+    CHECK(!world::ambientLight(amb, {10, 32, 10}, rgb)); // map without ambient lumps
   }
 
   // Sky cube: faces meet at shared corners (layout derived from HL2 sky texture seams, DECISIONS.md).
