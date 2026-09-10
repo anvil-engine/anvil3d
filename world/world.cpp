@@ -15,7 +15,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <optional>
 #include <set>
+#include <unordered_map>
 
 namespace anvil::world {
 namespace {
@@ -64,6 +66,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   }
   std::unique_ptr<World> w(new World(fs, device));
   w->map_ = std::move(*map);
+  w->entityLump_ = bsp::parseEntities(w->map_.entities);
   if (!w->map_.pakfile.empty()) {
     auto zip = ZipArchive::parse(std::move(w->map_.pakfile), &err); // the archive owns the bytes from here
     if (zip) w->pak_ = fs.addArchive(std::move(zip), path, {"GAME", "BSP"}, true);
@@ -92,11 +95,13 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
     }
   }
   w->setupMaterials(mesh);
+  w->setupEntities(mesh);
   w->setupSky();
   w->faces_ = mesh.faces;
-  w->visibility_ = std::make_unique<Visibility>(w->map_, w->faces_);
-  ANVIL_INFO("world", "%s: %zu materials, %zu textures, %zu missing", path.c_str(), mesh.batches.size(),
-             w->textures_.size(), w->missing_);
+  w->worldFaceCount_ = mesh.models.empty() ? 0 : mesh.models[0].faceCount; // model 0 sorts first
+  w->visibility_ = std::make_unique<Visibility>(w->map_, std::span(w->faces_).first(w->worldFaceCount_));
+  ANVIL_INFO("world", "%s: %zu batches, %zu textures, %zu brush entities, %zu missing", path.c_str(),
+             mesh.batches.size(), w->textures_.size(), w->entities_.size(), w->missing_);
   return w;
 }
 
@@ -141,8 +146,10 @@ void World::setupMaterials(const Mesh& mesh) {
     if (warned.insert(message).second) ANVIL_WARN("world", "%s", message.c_str());
   };
   const vmt::IncludeFn include = [&](std::string_view p) { return fs_.readFile(p, "GAME"); };
-  for (const Batch& b : mesh.batches) {
-    const std::string& name = map_.texdataNames[size_t(map_.texdatas[size_t(b.texdata)].nameStringTableId)];
+  // Material per texdata, shared by every model's batches. nullopt = not drawn (e.g. water).
+  std::unordered_map<int32_t, std::optional<render::Draw3D>> byTexdata;
+  auto resolve = [&](int32_t texdata) -> std::optional<render::Draw3D> {
+    const std::string& name = map_.texdataNames[size_t(map_.texdatas[size_t(texdata)].nameStringTableId)];
     const std::string path = "materials/" + lower(name) + ".vmt";
     render::Draw3D d;
     d.lightmap = lightmap_;
@@ -154,13 +161,12 @@ void World::setupMaterials(const Mesh& mesh) {
       ANVIL_WARN("world", "Material %s: %s", path.c_str(), err.c_str());
       ++missing_;
       d.texture = error_;
-      materials_.push_back({d, b.firstFace, b.faceCount});
-      continue;
+      return d;
     }
     const std::string shader = lower(m->shader);
     if (shader == "water" || shader == "refract") { // no base texture to show; needs its own shader
       warnOnce("STUB: " + m->shader + " surfaces are not drawn");
-      continue;
+      return std::nullopt;
     }
     if (shader == "unlitgeneric") {
       d.lightmap = 0;
@@ -171,6 +177,10 @@ void World::setupMaterials(const Mesh& mesh) {
       warnOnce("PARTIAL: shader " + m->shader + " drawn as LightmappedGeneric");
     }
     const std::string_view base = m->get("$basetexture");
+    if (lower(base).starts_with("_rt_")) { // engine render target (e.g. func_monitor camera), not a file
+      warnOnce("STUB: render-target textures (" + std::string(base) + ") not implemented; surfaces not drawn");
+      return std::nullopt;
+    }
     d.texture = base.empty() ? 0 : texture(base);
     if (m->flag("$translucent") || m->flag("$additive")) {
       d.blend = render::Blend::Translucent; // ponytail: additive approximated as alpha blend; unsorted
@@ -179,15 +189,40 @@ void World::setupMaterials(const Mesh& mesh) {
       const std::string ref(m->get("$alphatestreference", "0.5"));
       d.alphaRef = std::strtof(ref.c_str(), nullptr);
     }
+    return d;
+  };
+  modelDraws_.resize(map_.models.size());
+  for (uint32_t i = 0; i < mesh.batches.size(); ++i) {
+    const Batch& b = mesh.batches[i];
+    auto it = byTexdata.find(b.texdata);
+    if (it == byTexdata.end()) it = byTexdata.emplace(b.texdata, resolve(b.texdata)).first;
+    render::Draw3D d = it->second.value_or(render::Draw3D{});
+    d.firstIndex = b.firstIndex;
+    d.indexCount = it->second ? b.indexCount : 0;
     materials_.push_back({d, b.firstFace, b.faceCount});
+    if (!it->second) continue;
+    auto& list = d.blend == render::Blend::Translucent ? modelDraws_[b.model].translucent : modelDraws_[b.model].opaque;
+    list.push_back(i);
   }
-  std::stable_partition(materials_.begin(), materials_.end(),
-                        [](const Material& m) { return m.draw.blend != render::Blend::Translucent; });
+}
+
+void World::setupEntities(const Mesh& mesh) {
+  for (BrushEntity& e : brushEntities(map_, entityLump_)) {
+    const ModelRange& range = mesh.models[e.model];
+    if (modelDraws_[e.model].opaque.empty() && modelDraws_[e.model].translucent.empty()) continue; // triggers etc.
+    EntityInstance inst{std::move(e), {}, {}, {}, {}};
+    inst.matrix = inst.entity.transform.matrix();
+    transformBox(inst.entity.transform, range.mins, range.maxs, inst.mins, inst.maxs);
+    clustersInBox(map_, inst.mins, inst.maxs, inst.clusters);
+    std::sort(inst.clusters.begin(), inst.clusters.end());
+    inst.clusters.erase(std::unique(inst.clusters.begin(), inst.clusters.end()), inst.clusters.end());
+    entities_.push_back(std::move(inst));
+  }
 }
 
 void World::setupSky() {
   std::string name;
-  for (const bsp::Entity& e : bsp::parseEntities(map_.entities))
+  for (const bsp::Entity& e : entityLump_)
     if (iequals(e.get("classname"), "worldspawn")) name = lower(e.get("skyname"));
   if (name.empty()) return;
   // Maps name the HDR set ("sky_day01_01_hdr"); its materials carry the LDR $basetexture we draw. Fall back to
@@ -234,37 +269,68 @@ void World::draw(const Camera& camera, float aspect, bool usePvs) {
     skyCam.origin = {};
     device_->draw3d(skyMesh_, viewProjection(skyCam, aspect), skyDraws_);
   }
-  visibility_->compute(map_, faces_, camera.origin, viewProj, usePvs, visible_, stats_);
-  // Visible faces of a material -> index ranges; neighbours in the index buffer merge into one draw.
+  stats_ = {};
+  visibility_->compute(map_, std::span(faces_).first(worldFaceCount_), camera.origin, viewProj, usePvs, visible_,
+                       stats_);
   frameDraws_.clear();
-  stats_.submittedFaces = stats_.triangles = 0;
-  for (const Material& m : materials_) {
-    bool open = false; // frameDraws_.back() belongs to this material and may be extended
-    for (uint32_t i = m.firstFace; i < m.firstFace + m.faceCount; ++i) {
-      if (!visible_[i]) {
-        open = false;
-        continue;
-      }
-      const MeshFace& f = faces_[i];
-      if (open) {
-        frameDraws_.back().indexCount += f.indexCount;
-      } else {
-        frameDraws_.push_back(m.draw);
-        frameDraws_.back().firstIndex = f.firstIndex;
-        frameDraws_.back().indexCount = f.indexCount;
-        open = true;
-      }
-      ++stats_.submittedFaces;
-      stats_.triangles += f.indexCount / 3;
-    }
+  translucentDraws_.clear();
+  if (!modelDraws_.empty()) {
+    for (uint32_t b : modelDraws_[0].opaque) appendVisible(b, frameDraws_);
+    for (uint32_t b : modelDraws_[0].translucent) appendVisible(b, translucentDraws_);
   }
-  stats_.draws = frameDraws_.size();
+  stats_.entities = entities_.size();
+  entityVisible_.resize(entities_.size());
+  for (size_t i = 0; i < entities_.size(); ++i) {
+    entityVisible_[i] = visibility_->visible(entities_[i].clusters, entities_[i].mins, entities_[i].maxs);
+    stats_.entitiesDrawn += entityVisible_[i];
+  }
+  // Opaque world, opaque entities, then translucent world and entities: translucent surfaces never write depth,
+  // so anything drawn after them would cover them.
+  std::vector<render::Draw3D> entityDraws;
+  auto drawEntities = [&](bool translucent) {
+    for (size_t i = 0; i < entities_.size(); ++i) {
+      if (!entityVisible_[i]) continue;
+      const ModelDraws& md = modelDraws_[entities_[i].entity.model];
+      entityDraws.clear();
+      for (uint32_t b : translucent ? md.translucent : md.opaque) entityDraws.push_back(materials_[b].draw);
+      for (const render::Draw3D& d : entityDraws) stats_.triangles += d.indexCount / 3;
+      stats_.draws += entityDraws.size();
+      if (device_ && mesh_ && !entityDraws.empty()) device_->draw3d(mesh_, viewProj * entities_[i].matrix, entityDraws);
+    }
+  };
+  stats_.draws += frameDraws_.size() + translucentDraws_.size();
   if (device_ && mesh_) device_->draw3d(mesh_, viewProj, frameDraws_);
+  drawEntities(false);
+  if (device_ && mesh_) device_->draw3d(mesh_, viewProj, translucentDraws_);
+  drawEntities(true);
+}
+
+// Visible faces of a world batch -> index ranges; neighbours in the index buffer merge into one draw.
+void World::appendVisible(uint32_t batch, std::vector<render::Draw3D>& out) {
+  const Material& m = materials_[batch];
+  bool open = false; // out.back() belongs to this batch and may be extended
+  for (uint32_t i = m.firstFace; i < m.firstFace + m.faceCount; ++i) {
+    if (!visible_[i]) {
+      open = false;
+      continue;
+    }
+    const MeshFace& f = faces_[i];
+    if (open) {
+      out.back().indexCount += f.indexCount;
+    } else {
+      out.push_back(m.draw);
+      out.back().firstIndex = f.firstIndex;
+      out.back().indexCount = f.indexCount;
+      open = true;
+    }
+    ++stats_.submittedFaces;
+    stats_.triangles += f.indexCount / 3;
+  }
 }
 
 Camera World::spawnPoint() const {
   Camera c;
-  for (const bsp::Entity& e : bsp::parseEntities(map_.entities)) {
+  for (const bsp::Entity& e : entityLump_) {
     if (!iequals(e.get("classname"), "info_player_start")) continue;
     float roll = 0;
     std::sscanf(std::string(e.get("origin")).c_str(), "%f %f %f", &c.origin.x, &c.origin.y, &c.origin.z);

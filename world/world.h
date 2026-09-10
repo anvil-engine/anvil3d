@@ -2,6 +2,7 @@
 
 #include "formats/bsp.h"
 #include "render/render.h"
+#include "world/entities.h"
 #include "world/visibility.h"
 #include "world/worldmesh.h"
 
@@ -28,8 +29,9 @@ struct Camera {
 render::Mat4 viewProjection(const Camera& camera, float aspect);
 
 struct DrawStats : VisStats {
-  size_t submittedFaces = 0; // visible faces with a drawable material
-  size_t triangles = 0, draws = 0;
+  size_t submittedFaces = 0;           // visible world faces with a drawable material
+  size_t entities = 0, entitiesDrawn = 0; // brush entities with drawable faces / passing PVS + frustum
+  size_t triangles = 0, draws = 0;     // world + entities
 };
 
 // A loaded map: the BSP, its pakfile mounted in the filesystem, world geometry and materials on the device.
@@ -51,11 +53,14 @@ public:
   const bsp::Map& map() const { return map_; }
   size_t missingAssets() const { return missing_; }    // materials or textures that failed to resolve
   const std::string& skyName() const { return skyName_; } // worldspawn skyname as resolved ("" = no sky)
+  size_t brushEntityCount() const { return entities_.size(); } // with drawable faces
 
 private:
   World(FileSystem& fs, render::Device* device) : fs_(fs), device_(device) {}
   void setupMaterials(const Mesh& mesh);
+  void setupEntities(const Mesh& mesh);
   void setupSky();
+  void appendVisible(uint32_t batch, std::vector<render::Draw3D>& out); // world batch, visible faces merged
   render::TextureHandle texture(std::string_view name);
 
   FileSystem& fs_;
@@ -65,12 +70,27 @@ private:
   render::MeshHandle mesh_ = 0;
   render::TextureHandle lightmap_ = 0, error_ = 0;
   std::unordered_map<std::string, render::TextureHandle> textures_; // key: materials/<name>.vtf
-  // One per drawable material, opaque first, then translucent; faces [firstFace, firstFace + faceCount).
+  std::vector<bsp::Entity> entityLump_;
+  // Parallel to Mesh::batches: the batch's whole index range with its material; faces [firstFace, +faceCount).
   struct Material {
     render::Draw3D draw;
     uint32_t firstFace, faceCount;
   };
   std::vector<Material> materials_;
+  struct ModelDraws { // drawable batches of one model, split so all opaque draws precede all translucent ones
+    std::vector<uint32_t> opaque, translucent;
+  };
+  std::vector<ModelDraws> modelDraws_; // parallel to map.models
+  size_t worldFaceCount_ = 0;          // Mesh::faces[0, worldFaceCount_) are model 0's
+  struct EntityInstance {
+    BrushEntity entity;
+    render::Mat4 matrix;               // local -> world
+    bsp::Vec3 mins, maxs;              // world-space bounds
+    std::vector<uint16_t> clusters;    // PVS clusters the bounds touch
+  };
+  std::vector<EntityInstance> entities_;
+  std::vector<uint8_t> entityVisible_;  // per entity, this frame
+  std::vector<render::Draw3D> translucentDraws_;
   render::MeshHandle skyMesh_ = 0;
   std::vector<render::Draw3D> skyDraws_; // one per cube face that has a material
   std::vector<MeshFace> faces_;

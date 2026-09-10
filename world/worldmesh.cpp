@@ -42,20 +42,25 @@ void luxelToRgba(const uint8_t rgbe[4], uint8_t out[4]) {
 
 Mesh buildMesh(const bsp::Map& map) {
   Mesh out;
-  if (map.models.empty()) return out;
-  const bsp::Model& worldModel = map.models[0];
+  out.models.resize(map.models.size());
 
-  // Drawable faces, grouped by texdata; stable so BSP order is kept within a material.
+  // Drawable faces, grouped by model then texdata; stable so BSP order is kept within a material.
   std::vector<size_t> faces;
-  for (int32_t i = worldModel.firstface; i < worldModel.firstface + worldModel.numfaces; ++i) {
-    const bsp::Face& f = map.faces[size_t(i)];
-    if (f.texinfo < 0) continue;
-    const bsp::TexInfo& ti = map.texinfos[size_t(f.texinfo)];
-    if (ti.texdata < 0 || (ti.flags & kSkipFlags) || (f.dispinfo < 0 && f.numedges < 3)) continue;
-    faces.push_back(size_t(i));
-  }
+  std::vector<uint32_t> modelOf(map.faces.size(), UINT32_MAX); // UINT32_MAX = not collected
+  for (size_t m = 0; m < map.models.size(); ++m)
+    for (int32_t i = map.models[m].firstface; i < map.models[m].firstface + map.models[m].numfaces; ++i) {
+      const bsp::Face& f = map.faces[size_t(i)];
+      if (f.texinfo < 0) continue;
+      const bsp::TexInfo& ti = map.texinfos[size_t(f.texinfo)];
+      if (ti.texdata < 0 || (ti.flags & kSkipFlags) || (f.dispinfo < 0 && f.numedges < 3)) continue;
+      if (modelOf[size_t(i)] != UINT32_MAX) continue; // listed by two models (malformed): first wins
+      faces.push_back(size_t(i));
+      modelOf[size_t(i)] = uint32_t(m);
+    }
   auto texdataOf = [&](size_t face) { return map.texinfos[size_t(map.faces[face].texinfo)].texdata; };
-  std::stable_sort(faces.begin(), faces.end(), [&](size_t a, size_t b) { return texdataOf(a) < texdataOf(b); });
+  std::stable_sort(faces.begin(), faces.end(), [&](size_t a, size_t b) {
+    return modelOf[a] != modelOf[b] ? modelOf[a] < modelOf[b] : texdataOf(a) < texdataOf(b);
+  });
 
   // Lightmap blocks: (size + 1) luxels per side. blocks[0] = 2x2 white for faces without lightmap data.
   std::vector<Block> blocks{{kWhite, 2, 2}};
@@ -134,8 +139,18 @@ Mesh buildMesh(const bsp::Map& map) {
       out.vertices.push_back(v);
     };
 
-    if (out.batches.empty() || out.batches.back().texdata != ti.texdata)
-      out.batches.push_back({ti.texdata, uint32_t(out.indices.size()), 0, uint32_t(out.faces.size()), 0});
+    const uint32_t model = modelOf[faces[k]];
+    if (out.batches.empty() || out.batches.back().texdata != ti.texdata || out.batches.back().model != model) {
+      out.batches.push_back({model, ti.texdata, uint32_t(out.indices.size()), 0, uint32_t(out.faces.size()), 0});
+      ModelRange& range = out.models[model];
+      if (range.batchCount == 0) {
+        range.firstBatch = uint32_t(out.batches.size() - 1);
+        range.firstFace = uint32_t(out.faces.size());
+        range.mins = {FLT_MAX, FLT_MAX, FLT_MAX};
+        range.maxs = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+      }
+      ++range.batchCount;
+    }
     const auto base = uint32_t(out.vertices.size());
     const auto firstIndex = uint32_t(out.indices.size());
     bsp::faceVertices(map, f, poly);
@@ -187,6 +202,10 @@ Mesh buildMesh(const bsp::Map& map) {
       mf.maxs = {std::max(mf.maxs.x, p.x), std::max(mf.maxs.y, p.y), std::max(mf.maxs.z, p.z)};
     }
     out.faces.push_back(mf);
+    ModelRange& range = out.models[model];
+    ++range.faceCount;
+    range.mins = {std::min(range.mins.x, mf.mins.x), std::min(range.mins.y, mf.mins.y), std::min(range.mins.z, mf.mins.z)};
+    range.maxs = {std::max(range.maxs.x, mf.maxs.x), std::max(range.maxs.y, mf.maxs.y), std::max(range.maxs.z, mf.maxs.z)};
     Batch& batch = out.batches.back();
     batch.indexCount = uint32_t(out.indices.size()) - batch.firstIndex;
     ++batch.faceCount;

@@ -2,6 +2,7 @@
 // (CPU), then renders d1_trainstation_01 headless (skipped without Vulkan). ANVIL_WORLD_SHOT=<file.bmp> saves it.
 #include "filesystem/filesystem.h"
 #include "filesystem/gameinfo.h"
+#include "world/entities.h"
 #include "world/sky.h"
 #include "world/visibility.h"
 #include "world/world.h"
@@ -221,8 +222,9 @@ int realData(const std::filesystem::path& modDir) {
       for (size_t i = 0; i + 3 < px.size() && px.size() == all.size(); i += 4)
         differ += std::memcmp(&px[i], &all[i], 3) != 0;
       std::printf("spawn yaw +%3.0f: cluster %d, %zu faces, PVS %zu, frustum %zu, submitted %zu (%zu triangles, "
-                  "%zu draws); frustum only %zu; PVS on/off differing pixels %zu\n", yaw, s.cluster, s.faces,
-                  s.pvsFaces, s.frustumFaces, s.submittedFaces, s.triangles, s.draws, frustumOnly, differ);
+                  "%zu draws); brush entities %zu/%zu; frustum only %zu; PVS on/off differing pixels %zu\n", yaw, s.cluster,
+                  s.faces, s.pvsFaces, s.frustumFaces, s.submittedFaces, s.triangles, s.draws, s.entitiesDrawn,
+                  s.entities, frustumOnly, differ);
       CHECK(s.cluster >= 0 && s.pvsFaces < s.faces && s.frustumFaces <= s.pvsFaces && s.submittedFaces <= s.frustumFaces);
       CHECK(px.size() == all.size() && differ == 0);
     }
@@ -337,6 +339,38 @@ int main(int argc, char** argv) {
   clip(cam, {10, 0, -20}, c);
   CHECK(near(c[0], 0) && near(c[1], 0) && near(c[3], 20));
   visibilityTests();
+
+  // Brush models: faces sorted by model, then texdata; one vertex/index set; per-model ranges and bounds.
+  {
+    bsp::Map two = syntheticMap();
+    two.models = {{{}, {}, {}, 0, 0, 3}, {{}, {}, {}, 0, 3, 1}}; // world: faces 0-2, *1: face 3
+    const world::Mesh m2 = world::buildMesh(two);
+    CHECK(m2.models.size() == 2 && m2.batches.size() == 3);
+    if (m2.models.size() == 2 && m2.batches.size() == 3) {
+      CHECK(m2.models[0].firstBatch == 0 && m2.models[0].batchCount == 2 && m2.models[0].faceCount == 2);
+      CHECK(m2.models[1].firstBatch == 2 && m2.models[1].batchCount == 1 && m2.models[1].firstFace == 2);
+      CHECK(m2.batches[2].model == 1 && m2.batches[2].texdata == 0 && m2.faces[2].face == 3);
+      CHECK(near(m2.models[0].maxs.z, 24) && near(m2.models[1].maxs.z, 0) && near(m2.models[1].maxs.x, 64));
+    }
+    two.entities = "{ \"classname\" \"func_brush\" \"model\" \"*1\" \"origin\" \"100 0 0\" \"angles\" \"0 90 0\" }\n"
+                   "{ \"classname\" \"func_door\" \"model\" \"*2\" }\n{ \"classname\" \"func_wall\" \"model\" \"*0\" }\n"
+                   "{ \"classname\" \"func_x\" \"model\" \"*1a\" }\n{ \"classname\" \"prop_static\" \"model\" \"models/a.mdl\" }";
+    const auto brushes = world::brushEntities(two, bsp::parseEntities(two.entities));
+    CHECK(brushes.size() == 1);
+    if (brushes.size() == 1) {
+      CHECK(brushes[0].classname == "func_brush" && brushes[0].model == 1 && near(brushes[0].transform.angles.y, 90));
+      const bsp::Vec3 p = brushes[0].transform.apply({10, 0, 0}); // yaw 90 turns +X toward +Y
+      CHECK(vertexAt({p.x, p.y, p.z, 0, 0, 0, 0}, 100, 10, 0));
+    }
+    world::Transform t;
+    t.angles = {90, 0, 0}; // pitch 90 tips +X down
+    const bsp::Vec3 down = t.apply({1, 0, 0});
+    CHECK(vertexAt({down.x, down.y, down.z, 0, 0, 0, 0}, 0, 0, -1));
+    bsp::Vec3 bmin, bmax;
+    t = {{5, 0, 0}, {0, 90, 0}};
+    world::transformBox(t, {0, 0, 0}, {10, 2, 1}, bmin, bmax);
+    CHECK(near(bmin.x, 3) && near(bmax.x, 5) && near(bmin.y, 0) && near(bmax.y, 10) && near(bmax.z, 1));
+  }
 
   // Sky cube: faces meet at shared corners (layout derived from HL2 sky texture seams, DECISIONS.md).
   std::vector<render::Vertex3D> sv;
