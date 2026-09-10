@@ -102,6 +102,11 @@ void Window::pixelSize(uint32_t& width, uint32_t& height) const {
   height = minimized ? 0 : uint32_t(h);
 }
 
+void Window::setSize(int width, int height) {
+  SDL_SetWindowSize(window_, width, height);
+  SDL_SyncWindow(window_);
+}
+
 void Window::logicalSize(uint32_t& width, uint32_t& height) const {
   int w = 0, h = 0;
   SDL_GetWindowSize(window_, &w, &h);

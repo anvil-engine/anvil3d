@@ -1,4 +1,22 @@
 // Vulkan backend for render::Device. One code path for native drivers and MoltenVK (portability).
+//
+// Synchronization / lifetime invariants (single graphics queue):
+// - Frames carry serials 1, 2, 3... Each submitted frame signals its slot's fence. A fence signal covers all
+//   earlier submissions on the queue, so after waiting any fence, every frame <= that fence's serial is done:
+//   completedSerial_ is advanced only from fences that were actually waited.
+// - A resource released while frame S is the latest begun frame (destroyTexture, retired growth buffers) is
+//   tagged S and freed once completedSerial_ >= S. Nothing is freed on "N frames ago" alone.
+// - A frame slot (command pool, per-frame vertex/index buffers, `acquired` semaphore) is reused only after its
+//   fence is waited, i.e. its previous frame completed.
+// - Swapchain: `acquired` is per frame slot (waited by that slot's submit); `renderDone_` is per swapchain image
+//   (waited by present), so a semaphore is never re-signaled while presentation may still wait on it.
+// - Swapchain recreation (resize, OUT_OF_DATE, SUBOPTIMAL, format change) happens only at frame begin, before
+//   acquire, after vkDeviceWaitIdle: no recorded or in-flight work references the old swapchain, its views,
+//   framebuffers or semaphores when they are destroyed. (Presentation-engine release of old images needs
+//   VK_EXT_swapchain_maintenance1 to be fully tracked; device idle is the accepted approximation.)
+// - Headless: one offscreen image + readback buffer shared by all frames, so beginFrame waits for every
+//   in-flight frame (frames are serialized).
+// - A failed submit leaves a fence that will never signal: the device is marked lost and stops rendering.
 #include "render/render.h"
 
 #include "common/log.h"
@@ -51,6 +69,7 @@ struct Garbage {
 };
 
 struct Frame {
+  uint64_t submitted = 0; // serial of the last frame submitted with this slot's fence (0 = none)
   VkCommandPool pool = VK_NULL_HANDLE;
   VkCommandBuffer cmd = VK_NULL_HANDLE;
   VkFence fence = VK_NULL_HANDLE;
@@ -80,12 +99,15 @@ private:
   bool createInstance(bool debug);
   bool pickDevice();
   bool createDevice();
-  bool createSwapchain();
+  bool createSwapchain(bool& formatChanged);
+  bool recreateSwapchain();
+  void waitSlot(Frame& f);
   void destroySwapchain();
   bool createOffscreen(uint32_t width, uint32_t height);
   bool createRenderPass();
   bool createFramebuffers();
   bool create2dPipeline();
+  bool create2dPipelineOnly();
   bool createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props, Buffer& out);
   void destroyBuffer(Buffer& b);
   void destroyTextureNow(Texture& t);
@@ -119,9 +141,12 @@ private:
   Buffer readback_;
 
   Frame frames_[kFramesInFlight];
-  uint64_t frameNumber_ = 0; // frames begun
+  uint64_t frameSerial_ = 0;     // latest begun frame (current frame while inFrame_)
+  uint64_t completedSerial_ = 0; // every frame <= this has finished on the GPU (from waited fences)
   uint32_t imageIndex_ = 0;
   bool inFrame_ = false;
+  bool swapchainDirty_ = false;  // present/acquire reported OUT_OF_DATE or SUBOPTIMAL
+  bool lost_ = false;
 
   VkDescriptorSetLayout setLayout_ = VK_NULL_HANDLE;
   VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
@@ -138,8 +163,9 @@ private:
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
                                             VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT* data,
                                             void*) {
-  if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ANVIL_ERROR("vulkan", "%s", data->pMessage);
-  else ANVIL_WARN("vulkan", "%s", data->pMessage);
+  // "validation:" prefix: tests fail on it (ctest FAIL_REGULAR_EXPRESSION).
+  if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ANVIL_ERROR("vulkan", "validation: %s", data->pMessage);
+  else ANVIL_WARN("vulkan", "validation: %s", data->pMessage);
   return VK_FALSE;
 }
 
@@ -159,8 +185,9 @@ bool VulkanDevice::init(const DeviceOptions& options) {
   }
   if (!pickDevice() || !createDevice()) return false;
 
+  bool formatChanged = false;
   if (window_) {
-    if (!createSwapchain()) return false;
+    if (!createSwapchain(formatChanged)) return false;
   } else if (!createOffscreen(options.width, options.height)) {
     return false;
   }
@@ -336,7 +363,7 @@ bool VulkanDevice::createDevice() {
   return true;
 }
 
-bool VulkanDevice::createSwapchain() {
+bool VulkanDevice::createSwapchain(bool& formatChanged) {
   VkSurfaceCapabilitiesKHR sc;
   vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_, surface_, &sc);
   uint32_t w = 0, h = 0;
@@ -355,17 +382,16 @@ bool VulkanDevice::createSwapchain() {
   vkGetPhysicalDeviceSurfaceFormatsKHR(physical_, surface_, &count, formats.data());
   if (formats.empty()) return false;
   // UNORM target: 2D/VGUI colors are authored in gamma space and blended there, as Source does.
+  // Deterministic preference order, independent of the order the surface lists formats in.
   VkSurfaceFormatKHR chosen = formats[0];
-  for (const VkSurfaceFormatKHR& f : formats)
-    if ((f.format == VK_FORMAT_B8G8R8A8_UNORM || f.format == VK_FORMAT_R8G8B8A8_UNORM) &&
-        f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-      chosen = f;
-      break;
-    }
-  if (colorFormat_ != VK_FORMAT_UNDEFINED && chosen.format != colorFormat_) {
-    ANVIL_ERROR("vulkan", "Swapchain format changed; render pass recreation not implemented");
-    return false;
-  }
+  bool found = false;
+  for (VkFormat preferred : {VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM})
+    for (const VkSurfaceFormatKHR& f : formats)
+      if (!found && f.format == preferred && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+        chosen = f;
+        found = true;
+      }
+  formatChanged = colorFormat_ != VK_FORMAT_UNDEFINED && chosen.format != colorFormat_;
   colorFormat_ = chosen.format;
 
   uint32_t modeCount = 0;
@@ -546,7 +572,6 @@ bool VulkanDevice::create2dPipeline() {
   plci.pushConstantRangeCount = 1;
   plci.pPushConstantRanges = &push;
   if (!check(vkCreatePipelineLayout(device_, &plci, nullptr, &pipelineLayout_), "vkCreatePipelineLayout")) return false;
-
   VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kMaxTextures};
   VkDescriptorPoolCreateInfo dpci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
   dpci.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
@@ -561,6 +586,11 @@ bool VulkanDevice::create2dPipeline() {
     sci.maxLod = VK_LOD_CLAMP_NONE;
     if (!check(vkCreateSampler(device_, &sci, nullptr, &samplers_[linear]), "vkCreateSampler")) return false;
   }
+  return create2dPipelineOnly();
+}
+
+// The pipeline: the only 2D object baked for the render pass (color format); recreated on format change.
+bool VulkanDevice::create2dPipelineOnly() {
 
   auto module = [&](const uint32_t* code, size_t bytes) {
     VkShaderModuleCreateInfo ci{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
@@ -781,7 +811,7 @@ TextureHandle VulkanDevice::createTexture(const TextureDesc& desc, std::span<con
 
 void VulkanDevice::destroyTexture(TextureHandle texture) {
   if (texture == 0 || texture >= textures_.size() || !textures_[texture].image) return;
-  garbage_.push_back({frameNumber_, textures_[texture], {}});
+  garbage_.push_back({frameSerial_, textures_[texture], {}});
   textures_[texture] = {};
   freeHandles_.push_back(texture);
 }
@@ -796,28 +826,50 @@ void VulkanDevice::collectGarbage(uint64_t completedFrame) {
   garbage_.erase(std::remove_if(garbage_.begin(), garbage_.end(), done), garbage_.end());
 }
 
-bool VulkanDevice::beginFrame(const float clearColor[4]) {
-  if (inFrame_) return false;
-  Frame& f = frames_[frameNumber_ % kFramesInFlight];
+void VulkanDevice::waitSlot(Frame& f) {
   vkWaitForFences(device_, 1, &f.fence, VK_TRUE, UINT64_MAX);
-  // Frames complete in submission order on our single queue: this slot's frame and all before it are done.
-  if (frameNumber_ >= kFramesInFlight) collectGarbage(frameNumber_ - kFramesInFlight);
+  completedSerial_ = std::max(completedSerial_, f.submitted);
+}
+
+bool VulkanDevice::recreateSwapchain() {
+  vkDeviceWaitIdle(device_); // nothing may reference the old swapchain objects (see invariants)
+  for (Frame& fr : frames_) completedSerial_ = std::max(completedSerial_, fr.submitted);
+  bool formatChanged = false;
+  if (!createSwapchain(formatChanged)) return false;
+  if (formatChanged) { // render pass and pipeline are baked for the color format
+    ANVIL_INFO("vulkan", "Swapchain format changed: recreating render pass and pipeline");
+    vkDestroyPipeline(device_, pipeline2d_, nullptr);
+    vkDestroyRenderPass(device_, renderPass_, nullptr);
+    pipeline2d_ = VK_NULL_HANDLE;
+    renderPass_ = VK_NULL_HANDLE;
+    if (!createRenderPass() || !create2dPipelineOnly()) return false;
+  }
+  swapchainDirty_ = false;
+  return createFramebuffers();
+}
+
+bool VulkanDevice::beginFrame(const float clearColor[4]) {
+  if (inFrame_ || lost_) return false;
+  Frame& f = frames_[(frameSerial_ + 1) % kFramesInFlight];
+  waitSlot(f);
+  if (!surface_)
+    for (Frame& other : frames_) waitSlot(other); // headless: shared target, frames are serialized
+  collectGarbage(completedSerial_);
 
   if (surface_) {
     uint32_t w = 0, h = 0;
     window_->pixelSize(w, h);
     if (w == 0 || h == 0) return false;
-    if (w != extent_.width || h != extent_.height || !swapchain_) {
-      vkDeviceWaitIdle(device_);
-      if (!createSwapchain() || !createFramebuffers()) return false;
+    if (swapchainDirty_ || w != extent_.width || h != extent_.height || !swapchain_) {
+      if (!recreateSwapchain()) return false;
     }
     const VkResult r = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX, f.acquired, VK_NULL_HANDLE, &imageIndex_);
-    if (r == VK_ERROR_OUT_OF_DATE_KHR) {
-      vkDeviceWaitIdle(device_);
-      createSwapchain() && createFramebuffers();
+    if (r == VK_ERROR_OUT_OF_DATE_KHR) { // no image, semaphore untouched: retry next frame
+      swapchainDirty_ = true;
       return false;
     }
-    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) return check(r, "vkAcquireNextImageKHR");
+    if (r == VK_SUBOPTIMAL_KHR) swapchainDirty_ = true; // image is valid and the semaphore will signal: use it
+    else if (r != VK_SUCCESS) return check(r, "vkAcquireNextImageKHR");
   } else {
     imageIndex_ = 0;
   }
@@ -839,7 +891,7 @@ bool VulkanDevice::beginFrame(const float clearColor[4]) {
   vkCmdBeginRenderPass(f.cmd, &rbi, VK_SUBPASS_CONTENTS_INLINE);
   const VkViewport viewport{0, 0, float(extent_.width), float(extent_.height), 0, 1};
   vkCmdSetViewport(f.cmd, 0, 1, &viewport);
-  ++frameNumber_;
+  ++frameSerial_;
   inFrame_ = true;
   return true;
 }
@@ -847,7 +899,7 @@ bool VulkanDevice::beginFrame(const float clearColor[4]) {
 bool VulkanDevice::ensureCapacity(Buffer& b, VkDeviceSize needed, VkBufferUsageFlags usage) {
   if (b.size >= needed) return true;
   // The old buffer may already be bound by commands recorded this frame: retire it with the frame.
-  if (b.buffer) garbage_.push_back({frameNumber_, {}, b});
+  if (b.buffer) garbage_.push_back({frameSerial_, {}, b});
   b = {};
   return createBuffer(std::max<VkDeviceSize>(needed * 2, 64 * 1024), usage,
                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, b);
@@ -855,7 +907,7 @@ bool VulkanDevice::ensureCapacity(Buffer& b, VkDeviceSize needed, VkBufferUsageF
 
 void VulkanDevice::draw2d(const Batch2D& batch) {
   if (!inFrame_ || batch.cmds.empty()) return;
-  Frame& f = frames_[(frameNumber_ - 1) % kFramesInFlight];
+  Frame& f = frames_[frameSerial_ % kFramesInFlight];
   const VkDeviceSize vbytes = batch.vertices.size() * sizeof(Vertex2D), ibytes = batch.indices.size() * sizeof(uint32_t);
   // Each batch appends to the frame buffers; growing retires the old buffer, so start the batch in the new one.
   if (f.vertices.size < f.vertexUsed + vbytes) {
@@ -896,7 +948,7 @@ void VulkanDevice::draw2d(const Batch2D& batch) {
 void VulkanDevice::endFrame() {
   if (!inFrame_) return;
   inFrame_ = false;
-  Frame& f = frames_[(frameNumber_ - 1) % kFramesInFlight];
+  Frame& f = frames_[frameSerial_ % kFramesInFlight];
   vkCmdEndRenderPass(f.cmd);
   if (!surface_) {
     VkBufferImageCopy region{};
@@ -917,7 +969,12 @@ void VulkanDevice::endFrame() {
     si.signalSemaphoreCount = 1;
     si.pSignalSemaphores = &renderDone_[imageIndex_];
   }
-  if (!check(vkQueueSubmit(queue_, 1, &si, f.fence), "vkQueueSubmit")) return;
+  if (!check(vkQueueSubmit(queue_, 1, &si, f.fence), "vkQueueSubmit")) {
+    lost_ = true; // the slot fence will never signal; stop instead of deadlocking in beginFrame
+    ANVIL_ERROR("vulkan", "Rendering stopped (device lost or out of memory)");
+    return;
+  }
+  f.submitted = frameSerial_;
   if (surface_) {
     VkPresentInfoKHR pi{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
     pi.waitSemaphoreCount = 1;
@@ -926,7 +983,7 @@ void VulkanDevice::endFrame() {
     pi.pSwapchains = &swapchain_;
     pi.pImageIndices = &imageIndex_;
     const VkResult r = vkQueuePresentKHR(queue_, &pi);
-    if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) extent_ = {}; // forces recreation next frame
+    if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) swapchainDirty_ = true; // recreate at next begin
     else check(r, "vkQueuePresentKHR");
   }
 }

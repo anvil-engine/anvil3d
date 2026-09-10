@@ -60,14 +60,15 @@ target_link_libraries(anvil PRIVATE anvil_engine)
 target_compile_definitions(anvil PRIVATE ANVIL_VERSION="${PROJECT_VERSION}")
 
 enable_testing()
-foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio console devui render interfaces)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio console devui render swapchain interfaces)
   add_executable(test_${name} tests/test_${name}.cpp)
   target_link_libraries(test_${name} PRIVATE anvil_engine)
 endforeach()
-foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio console devui render)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio console devui render swapchain)
   add_test(NAME ${name} COMMAND test_${name})
 endforeach()
-set_tests_properties(render PROPERTIES SKIP_RETURN_CODE 77) # no Vulkan implementation on this host
+# GPU tests: 77 = skipped (no Vulkan / no display); any validation-layer message fails the test.
+set_tests_properties(render swapchain devui PROPERTIES SKIP_RETURN_CODE 77 FAIL_REGULAR_EXPRESSION "validation:")
 
 # Opt-in: -DANVIL_HL2_DIR=<Half-Life 2 install> reads every VPK entry of a real install (not shipped).
 if(ANVIL_HL2_DIR)

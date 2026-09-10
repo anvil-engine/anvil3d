@@ -25,7 +25,7 @@ Render tests need a Vulkan implementation (Mac: brew molten-vk; Linux CI: mesa-v
 Real-data tests (not in repo): add `-DANVIL_HL2_DIR="<Half-Life 2 install>"` -> vpk/bsp/vtf/vmt/studio `_hl2` tests.
 Linux check from the Mac (GCC catches what AppleClang misses; run before committing new files):
 ```
-podman machine start; podman run --rm -v "$PWD":/src:ro docker.io/library/ubuntu:25.04 bash -c 'apt-get update -qq && apt-get install -y -qq cmake ninja-build g++ libsdl3-dev glslang-tools libvulkan1 mesa-vulkan-drivers >/dev/null && cmake -S /src -B /tmp/b -G Ninja && cmake --build /tmp/b && ctest --test-dir /tmp/b'; podman machine stop
+podman machine start; podman run --rm -v "$PWD":/src:ro docker.io/library/ubuntu:25.04 bash -c 'apt-get update -qq && apt-get install -y -qq cmake ninja-build g++ libsdl3-dev glslang-tools libvulkan1 mesa-vulkan-drivers vulkan-validationlayers xvfb xauth >/dev/null && cmake -S /src -B /tmp/b -G Ninja && cmake --build /tmp/b && ANVIL_VK_DEBUG=1 VK_LAYER_ENABLES=VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT xvfb-run -a ctest --test-dir /tmp/b'; podman machine stop
 ```
 
 ## Code

@@ -84,5 +84,34 @@ int main() {
     CHECK(pixelNear(px, 40, 8, 255, 255, 255));
     CHECK(pixelNear(px, 8, 8, 0, 0, 255) && pixelNear(px, 24, 24, 0, 0, 0));
   }
+
+  // Lifetime: a texture destroyed inside the frame that draws it stays alive until that frame completes.
+  const TextureHandle doomed = device->createTexture({2, 2, TextureFormat::RGBA8, false}, texels);
+  CHECK(doomed != 0);
+  CHECK(device->beginFrame(black));
+  Batch2D d;
+  quad(d, 32, 0, 64, 32, rgba(255, 255, 255, 255), doomed, full);
+  device->draw2d(d);
+  device->destroyTexture(doomed);
+  device->endFrame();
+  px = device->readPixels();
+  if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 40, 8, 255, 0, 0) && pixelNear(px, 56, 8, 0, 255, 0));
+  const TextureHandle reused = device->createTexture({1, 1, TextureFormat::RGBA8, false}, texels); // may reuse the handle
+  CHECK(reused != 0);
+
+  // Lifetime: per-frame buffers grow mid-frame (old buffer retired with the frame), across many frames.
+  for (int frame = 0; frame < 6; ++frame) {
+    CHECK(device->beginFrame(black));
+    for (int b = 0; b < 4; ++b) {
+      Batch2D big; // ~2600 quads: well past the initial 64 KiB vertex buffer
+      for (int i = 0; i < 2600; ++i) quad(big, 0, 0, 1, 1, rgba(0, 0, 0, 0), 0, full);
+      if (b == 3) quad(big, 0, 32, 32, 64, rgba(255, 255, 255, 255), reused, full); // reused = 1x1 red
+      device->draw2d(big);
+    }
+    device->endFrame();
+  }
+  px = device->readPixels();
+  if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 8, 40, 255, 0, 0));
+  device->destroyTexture(reused);
   return TEST_RESULT();
 }

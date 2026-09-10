@@ -107,3 +107,7 @@ IMPACT: Another process-lifetime global, confined to platform/. Not a pattern fo
 DECISION: Swapchain/offscreen color format is UNORM (B8G8R8A8 or R8G8B8A8), not sRGB.
 REASON: Source-era 2D/VGUI colors are gamma-space values blended in gamma space; an sRGB target would double-apply gamma.
 IMPACT: World shaders must output gamma-space color (or render to a linear HDR target and tonemap later).
+
+DECISION: Vulkan lifetime model = frame serials + fence-derived completedSerial_ (invariants in render/vulkan/device.cpp header comment). Headless frames are serialized (shared offscreen target). Swapchain recreated only at frame begin after device idle; OUT_OF_DATE/SUBOPTIMAL set a dirty flag; surface format picked by fixed preference (B8G8R8A8_UNORM, R8G8B8A8_UNORM) and a change rebuilds render pass + pipeline. Failed submit = device lost (stop rendering).
+REASON: External review sync pass: make GPU completion explicit, fix headless WAR/WAW on the shared target, avoid fence deadlock.
+IMPACT: Verified with Khronos validation + synchronization validation on llvmpipe (headless + Xvfb swapchain resize): zero messages. Presentation-engine release of old swapchain images relies on device idle (swapchain_maintenance1 not used).

@@ -2,6 +2,8 @@
 #include "render/render.h"
 #include "check.h"
 
+#include <cstdlib>
+
 using namespace anvil;
 
 int main() {
@@ -24,6 +26,7 @@ int main() {
   render::DeviceOptions options;
   options.width = 256;
   options.height = 128;
+  options.debug = std::getenv("ANVIL_VK_DEBUG") != nullptr;
   auto device = render::createDevice(options);
   if (!device) {
     std::puts("render chain skipped: no Vulkan implementation");

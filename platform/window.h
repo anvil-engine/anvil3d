@@ -30,6 +30,8 @@ public:
 
   // Drawable size in pixels (larger than the window size on HiDPI displays). 0x0 while minimized.
   void pixelSize(uint32_t& width, uint32_t& height) const;
+  // Resizes the window (logical units). Takes effect after the next pumpEvents().
+  void setSize(int width, int height);
   // Logical window size (the coordinate space of mouse input).
   void logicalSize(uint32_t& width, uint32_t& height) const;
 
