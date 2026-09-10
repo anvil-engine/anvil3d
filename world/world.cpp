@@ -172,7 +172,12 @@ void World::setupMaterials(const Mesh& mesh) {
       d.lightmap = 0;
       d.colorScale = 1.0f;
     } else if (shader == "worldvertextransition") {
-      warnOnce("PARTIAL: WorldVertexTransition draws $basetexture only ($basetexture2 blend not implemented)");
+      // Displacement alpha blends $basetexture -> $basetexture2 (vertex blend weight, see world::Mesh).
+      // $blendmodulatetexture and $basetexturetransform2 are not applied.
+      if (m->has("$blendmodulatetexture") || m->has("$basetexturetransform2"))
+        warnOnce("PARTIAL: WorldVertexTransition $blendmodulatetexture / $basetexturetransform2 ignored");
+      const std::string_view base2 = m->get("$basetexture2");
+      if (!base2.empty()) d.texture2 = texture(base2);
     } else if (shader != "lightmappedgeneric") {
       warnOnce("PARTIAL: shader " + m->shader + " drawn as LightmappedGeneric");
     }

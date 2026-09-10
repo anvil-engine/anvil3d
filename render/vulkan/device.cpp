@@ -656,10 +656,11 @@ bool VulkanDevice::createLayouts() {
   plci.pushConstantRangeCount = 1;
   plci.pPushConstantRanges = &push;
   if (!check(vkCreatePipelineLayout(device_, &plci, nullptr, &pipelineLayout_), "vkCreatePipelineLayout")) return false;
-  // 3D: set 0 = texture, set 1 = lightmap (same per-texture sets); 64 bytes viewProj + 16 bytes params (<= 128 guaranteed).
-  const VkDescriptorSetLayout sets3d[2] = {setLayout_, setLayout_};
+  // 3D: set 0 = texture, 1 = lightmap, 2 = texture2 (same per-texture sets); 64 bytes viewProj + 16 bytes params
+  // (<= 128 guaranteed).
+  const VkDescriptorSetLayout sets3d[3] = {setLayout_, setLayout_, setLayout_};
   const VkPushConstantRange push3d[2] = {{VK_SHADER_STAGE_VERTEX_BIT, 0, 64}, {VK_SHADER_STAGE_FRAGMENT_BIT, 64, 16}};
-  plci.setLayoutCount = 2;
+  plci.setLayoutCount = 3;
   plci.pSetLayouts = sets3d;
   plci.pushConstantRangeCount = 2;
   plci.pPushConstantRanges = push3d;
@@ -675,13 +676,14 @@ bool VulkanDevice::createLayouts() {
 
 // Pipelines are the only objects baked for the render pass (color format); recreated on format change.
 bool VulkanDevice::createPipelines() {
-  static_assert(sizeof(Vertex2D) == 20 && sizeof(Vertex3D) == 28);
+  static_assert(sizeof(Vertex2D) == 20 && sizeof(Vertex3D) == 32);
   const VkVertexInputAttributeDescription attrs2d[3] = {{0, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex2D, x)},
                                                         {1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex2D, u)},
                                                         {2, 0, VK_FORMAT_R8G8B8A8_UNORM, offsetof(Vertex2D, color)}};
-  const VkVertexInputAttributeDescription attrs3d[3] = {{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, x)},
+  const VkVertexInputAttributeDescription attrs3d[4] = {{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, x)},
                                                         {1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, u)},
-                                                        {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, lu)}};
+                                                        {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, lu)},
+                                                        {3, 0, VK_FORMAT_R32_SFLOAT, offsetof(Vertex3D, blend)}};
   pipeline2d_ = createPipeline({kUiVert, kUiFrag, sizeof(Vertex2D), attrs2d, pipelineLayout_, false, false, true});
   pipelineOpaque_ = createPipeline({kWorldVert, kWorldFrag, sizeof(Vertex3D), attrs3d, pipelineLayout3d_, true, true, false});
   pipelineTranslucent_ = createPipeline({kWorldVert, kWorldFrag, sizeof(Vertex3D), attrs3d, pipelineLayout3d_, true, false, true});
@@ -1131,9 +1133,9 @@ void VulkanDevice::draw3d(MeshHandle mesh, const Mat4& viewProj, std::span<const
                          : d.blend == Blend::Background ? pipelineBackground_
                                                         : pipelineOpaque_;
     if (p != bound) vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, bound = p);
-    const VkDescriptorSet sets[2] = {texture(d.texture).set, texture(d.lightmap).set};
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout3d_, 0, 2, sets, 0, nullptr);
-    const float params[4] = {d.colorScale, d.blend == Blend::AlphaTest ? d.alphaRef : 0.0f, 0, 0};
+    const VkDescriptorSet sets[3] = {texture(d.texture).set, texture(d.lightmap).set, texture(d.texture2).set};
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout3d_, 0, 3, sets, 0, nullptr);
+    const float params[4] = {d.colorScale, d.blend == Blend::AlphaTest ? d.alphaRef : 0.0f, d.texture2 ? 1.0f : 0.0f, 0};
     vkCmdPushConstants(cmd, pipelineLayout3d_, VK_SHADER_STAGE_FRAGMENT_BIT, 64, sizeof(params), params);
     vkCmdDrawIndexed(cmd, d.indexCount, 1, d.firstIndex, 0, 0);
   }

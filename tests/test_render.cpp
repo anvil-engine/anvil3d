@@ -192,9 +192,9 @@ int main() {
     const Mat4 viewProj = perspective(3.14159265f / 2, 1.0f, 1.0f);
     std::vector<Vertex3D> verts;
     std::vector<uint32_t> idx;
-    auto quad3 = [&](float x0, float y0, float x1, float y1, float z) {
+    auto quad3 = [&](float x0, float y0, float x1, float y1, float z, float blend = 0) {
       const auto base = uint32_t(verts.size());
-      for (auto [x, y] : {std::pair{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}) verts.push_back({x, y, z, 0.5f, 0.5f, 0.5f, 0.5f});
+      for (auto [x, y] : {std::pair{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}) verts.push_back({x, y, z, 0.5f, 0.5f, 0.5f, 0.5f, blend});
       for (uint32_t i : {0u, 1u, 2u, 0u, 2u, 3u}) idx.push_back(base + i);
     };
     quad3(-2, -2, 0, 2, -2);  // near, left half
@@ -251,6 +251,27 @@ int main() {
     px = device->readPixels();
     if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 16, 32, 0, 0, 255) && pixelNear(px, 48, 32, 0, 0, 255));
     device->destroyMesh(mesh2);
+    // texture2: vertex blend 1 shows texture2, 0 shows texture; without texture2 the weight is ignored.
+    verts.clear();
+    idx.clear();
+    quad3(-2, -2, 0, 2, -2, 1.0f); // left half, blend 1
+    quad3(0, -2, 2, 2, -2, 0.0f);  // right half, blend 0
+    const MeshHandle mesh3 = device->createMesh(verts, idx);
+    Draw3D layered[2];
+    layered[0] = {baseTex, 0, 0, 12, 1.0f, Blend::Opaque};
+    layered[0].texture2 = blueTex;
+    CHECK(device->beginFrame(black));
+    device->draw3d(mesh3, viewProj, std::span(layered, 1));
+    device->endFrame();
+    px = device->readPixels();
+    if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 16, 32, 0, 0, 255) && pixelNear(px, 48, 32, 200, 100, 50));
+    layered[0].texture2 = 0;
+    CHECK(device->beginFrame(black));
+    device->draw3d(mesh3, viewProj, std::span(layered, 1));
+    device->endFrame();
+    px = device->readPixels();
+    if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 16, 32, 200, 100, 50));
+    device->destroyMesh(mesh3);
     for (TextureHandle t : {baseTex, lightTex, holeTex, glassTex, blueTex}) device->destroyTexture(t);
   }
 

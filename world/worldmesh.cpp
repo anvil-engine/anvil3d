@@ -126,8 +126,9 @@ Mesh buildMesh(const bsp::Map& map) {
     const float texW = td.width > 0 ? float(td.width) : 1.0f, texH = td.height > 0 ? float(td.height) : 1.0f;
     // `flat` = position on the undisplaced face: displacement texture and lightmap coordinates follow the base
     // face's projection, so textures stretch with the displacement (Source behavior).
-    auto emit = [&](const bsp::Vec3& p, const bsp::Vec3& flat) {
-      render::Vertex3D v{p.x, p.y, p.z, project(flat, ti.textureVecs[0]) / texW, project(flat, ti.textureVecs[1]) / texH, 0, 0};
+    auto emit = [&](const bsp::Vec3& p, const bsp::Vec3& flat, float blend) {
+      render::Vertex3D v{p.x, p.y, p.z, project(flat, ti.textureVecs[0]) / texW, project(flat, ti.textureVecs[1]) / texH,
+                         0, 0, blend};
       float s = 0.5f, t = 0.5f; // centre of the white block's 2x2: bilinear stays white
       if (block.face != kWhite) {
         // Luxel centres sit on integer lightmap coordinates; clamp keeps bilinear taps inside the block.
@@ -177,7 +178,9 @@ Mesh buildMesh(const bsp::Map& map) {
         for (uint32_t col = 0; col < n; ++col) {
           const bsp::Vec3 flat = lerp(a, b, float(col) / float(n - 1));
           const bsp::DispVert& dv = map.dispVerts[size_t(d.dispVertStart) + row * n + col]; // range validated at load
-          emit({flat.x + dv.vec.x * dv.dist, flat.y + dv.vec.y * dv.dist, flat.z + dv.vec.z * dv.dist}, flat);
+          // Painted alpha 0..255 = WorldVertexTransition weight of $basetexture2.
+          emit({flat.x + dv.vec.x * dv.dist, flat.y + dv.vec.y * dv.dist, flat.z + dv.vec.z * dv.dist}, flat,
+               std::clamp(dv.alpha / 255.0f, 0.0f, 1.0f));
         }
       }
       for (uint32_t row = 0; row + 1 < n; ++row)
@@ -189,7 +192,7 @@ Mesh buildMesh(const bsp::Map& map) {
         }
       ++out.displacements;
     } else {
-      for (const bsp::Vec3& p : poly) emit(p, p);
+      for (const bsp::Vec3& p : poly) emit(p, p, 0.0f);
       for (uint32_t i = 1; i + 1 < poly.size(); ++i) // faces are convex: fan
         out.indices.insert(out.indices.end(), {base, base + i, base + i + 1});
       ++out.polygons;

@@ -31,7 +31,7 @@
 1. [x] render::2d + render::Device API; Vulkan backend (swapchain + headless offscreen); RGBA8 textures.
 2. [x] VTF -> render::TextureData (materials/texture) -> render::Texture: BC1-3 native when caps.textureCompressionBC, CPU decode otherwise; mip chains; sampler addressing from VTF flags. (DXT1/3/5, BGR(A)888x, RGBA16F, UV88); material -> texture binding.
 3. [x] World mesh builder: faces -> polygons, displacement grids, lightmap atlas; LightmappedGeneric basics; `map <name>`; free camera.
-3a. [ ] WorldVertexTransition blend ($basetexture2 by displacement alpha); UnlitTwoTexture; translucent sorting.
+3a. [x] WorldVertexTransition blend ($basetexture2 by displacement alpha). [ ] UnlitTwoTexture; translucent sorting.
 3b. [x] Brush entities (models *N) placed by entity origin/angles (static). [x] 2D sky. [ ] sky_camera 3D skybox. [ ] render targets (_rt_camera).
 4. [ ] Static props via studio loader.
 5. [x] PVS/frustum culling (per face; no areaportals, no occlusion).

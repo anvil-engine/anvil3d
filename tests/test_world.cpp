@@ -56,7 +56,7 @@ bsp::Map syntheticMap() {
   d.power = 2;
   d.mapFace = 2;
   m.dispInfos = {d};
-  for (int i = 0; i < 25; ++i) m.dispVerts.push_back({{0, 0, 1}, float(i), 0});
+  for (int i = 0; i < 25; ++i) m.dispVerts.push_back({{0, 0, 1}, float(i), i == 24 ? 255.0f : i == 1 ? 51.0f : 0.0f});
   return m;
 }
 
@@ -316,6 +316,9 @@ int main(int argc, char** argv) {
     CHECK(vertexAt(mesh.vertices[8 + 5], 64, 16, 5)); // next row
     CHECK(vertexAt(mesh.vertices[8 + 24], 0, 64, 24));
     CHECK(near(mesh.vertices[8 + 5].u, 2) && near(mesh.vertices[8 + 5].v, 0.5f));
+    // WorldVertexTransition weight = painted alpha / 255 (displacements only).
+    CHECK(near(mesh.vertices[8 + 24].blend, 1) && near(mesh.vertices[8 + 1].blend, 0.2f) && mesh.vertices[8].blend == 0);
+    CHECK(mesh.vertices[0].blend == 0);
   }
   CHECK(mesh.lightmap.pixels.size() == size_t(mesh.lightmap.desc.width) * mesh.lightmap.desc.height * 4);
 
@@ -360,12 +363,12 @@ int main(int argc, char** argv) {
     if (brushes.size() == 1) {
       CHECK(brushes[0].classname == "func_brush" && brushes[0].model == 1 && near(brushes[0].transform.angles.y, 90));
       const bsp::Vec3 p = brushes[0].transform.apply({10, 0, 0}); // yaw 90 turns +X toward +Y
-      CHECK(vertexAt({p.x, p.y, p.z, 0, 0, 0, 0}, 100, 10, 0));
+      CHECK(vertexAt({p.x, p.y, p.z, 0, 0, 0, 0, 0}, 100, 10, 0));
     }
     world::Transform t;
     t.angles = {90, 0, 0}; // pitch 90 tips +X down
     const bsp::Vec3 down = t.apply({1, 0, 0});
-    CHECK(vertexAt({down.x, down.y, down.z, 0, 0, 0, 0}, 0, 0, -1));
+    CHECK(vertexAt({down.x, down.y, down.z, 0, 0, 0, 0, 0}, 0, 0, -1));
     bsp::Vec3 bmin, bmax;
     t = {{5, 0, 0}, {0, 90, 0}};
     world::transformBox(t, {0, 0, 0}, {10, 2, 1}, bmin, bmax);

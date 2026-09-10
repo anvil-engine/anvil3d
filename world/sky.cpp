@@ -22,7 +22,7 @@ void skyMesh(float halfSize, std::vector<render::Vertex3D>& vertices, std::vecto
     for (auto [u, v] : {std::pair{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}}) {
       float p[3];
       for (int k = 0; k < 3; ++k) p[k] = (f.centre[k] + f.uAxis[k] * (2 * u - 1) + f.vAxis[k] * (2 * v - 1)) * halfSize;
-      vertices.push_back({p[0], p[1], p[2], u, v, 0, 0});
+      vertices.push_back({p[0], p[1], p[2], u, v, 0, 0, 0});
     }
     indices.insert(indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
   }

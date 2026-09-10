@@ -34,7 +34,7 @@ struct ModelRange {
 };
 
 struct Mesh {
-  std::vector<render::Vertex3D> vertices; // u,v in texture repeats; lu,lv in atlas [0,1]
+  std::vector<render::Vertex3D> vertices; // u,v in texture repeats; lu,lv in atlas [0,1]; blend = disp alpha / 255
   std::vector<uint32_t> indices;          // triangle list
   std::vector<MeshFace> faces;            // index-buffer order
   std::vector<Batch> batches;             // sorted by (model, texdata), contiguous

@@ -84,6 +84,7 @@ struct Vertex3D {
   float x, y, z;
   float u, v;   // texture coordinates
   float lu, lv; // lightmap coordinates
+  float blend;  // 0 = texture, 1 = texture2 (Draw3D::texture2 set), linear between
 };
 
 // 0 = no mesh.
@@ -96,8 +97,9 @@ enum class Blend : uint8_t {
   Background,  // no depth test, no depth write, no blending: draw first, behind the scene (skybox)
 };
 
-// Fixed two-texture modulate: rgb = texture(u,v).rgb * lightmap(lu,lv).rgb * colorScale, alpha = texture alpha.
-// What the textures mean (base map, lightmap, overbright factor) is decided by the material layer above.
+// Fixed modulate: base = texture2 ? mix(texture(u,v), texture2(u,v), blend) : texture(u,v);
+// rgb = base.rgb * lightmap(lu,lv).rgb * colorScale, alpha = base alpha.
+// What the textures mean (base map, blend layer, lightmap, overbright factor) is decided by the material layer above.
 struct Draw3D {
   TextureHandle texture = 0;  // 0 = white
   TextureHandle lightmap = 0; // 0 = white
@@ -105,6 +107,7 @@ struct Draw3D {
   float colorScale = 1.0f;
   Blend blend = Blend::Opaque;
   float alphaRef = 0.5f;
+  TextureHandle texture2 = 0; // 0 = no blend layer
 };
 
 // Column-major 4x4 (m[col * 4 + row]).
