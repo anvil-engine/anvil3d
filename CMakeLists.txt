@@ -24,7 +24,7 @@ add_library(anvil_filesystem STATIC filesystem/filesystem.cpp filesystem/gameinf
 target_link_libraries(anvil_filesystem PUBLIC anvil_common)
 
 # Format parsers: pure functions over bytes, no I/O, no engine state.
-add_library(anvil_formats STATIC formats/bsp.cpp formats/vtf.cpp formats/vmt.cpp)
+add_library(anvil_formats STATIC formats/bsp.cpp formats/vtf.cpp formats/vmt.cpp formats/studio.cpp)
 target_link_libraries(anvil_formats PUBLIC anvil_common)
 
 add_library(anvil_engine STATIC engine/console.cpp compat/interfaces.cpp)
@@ -35,11 +35,11 @@ target_link_libraries(anvil PRIVATE anvil_engine)
 target_compile_definitions(anvil PRIVATE ANVIL_VERSION="${PROJECT_VERSION}")
 
 enable_testing()
-foreach(name cmdline keyvalues filesystem vpk bsp vtf vmt console interfaces)
+foreach(name cmdline keyvalues filesystem vpk bsp vtf vmt studio console interfaces)
   add_executable(test_${name} tests/test_${name}.cpp)
   target_link_libraries(test_${name} PRIVATE anvil_engine)
 endforeach()
-foreach(name cmdline keyvalues filesystem vpk bsp vtf vmt console)
+foreach(name cmdline keyvalues filesystem vpk bsp vtf vmt studio console)
   add_test(NAME ${name} COMMAND test_${name})
 endforeach()
 
@@ -51,6 +51,7 @@ if(ANVIL_HL2_DIR)
   add_test(NAME bsp_hl2 COMMAND test_bsp ${ANVIL_HL2_MAPS})
   add_test(NAME vtf_hl2 COMMAND test_vtf ${ANVIL_HL2_VPKS})
   add_test(NAME vmt_hl2 COMMAND test_vmt ${ANVIL_HL2_VPKS})
+  add_test(NAME studio_hl2 COMMAND test_studio ${ANVIL_HL2_VPKS})
 endif()
 
 # Stand-in game module; hidden visibility so only the explicitly exported CreateInterface is visible.

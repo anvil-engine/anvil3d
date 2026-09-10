@@ -21,6 +21,11 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+Real-data tests (not in repo): add `-DANVIL_HL2_DIR="<Half-Life 2 install>"` -> vpk/bsp/vtf/vmt/studio `_hl2` tests.
+Linux check from the Mac (GCC catches what AppleClang misses; run before committing new files):
+```
+podman machine start; podman run --rm -v "$PWD":/src:ro docker.io/library/ubuntu:25.04 bash -c 'apt-get update -qq && apt-get install -y -qq cmake ninja-build g++ libsdl3-dev >/dev/null && cmake -S /src -B /tmp/b -G Ninja && cmake --build /tmp/b && ctest --test-dir /tmp/b'; podman machine stop
+```
 
 ## Code
 - C++20, RAII, explicit ownership, no singletons/global state except logging and the interface registry.

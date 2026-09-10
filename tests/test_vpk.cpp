@@ -4,6 +4,7 @@
 #include "filesystem/vpk.h"
 #include "check.h"
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 

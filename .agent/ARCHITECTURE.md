@@ -11,7 +11,7 @@ Source game DLLs (client/server)
 - common/   logging, cmdline, small utils. No deps.
 - platform/ OS + window + input + dynamic modules. Only place SDL is included.
 - filesystem/ virtual FS, search paths, gameinfo.txt. OS paths stop here.
-- formats/  pure parsers over bytes (bsp; later vtf, vmt, mdl). No I/O. Validate all cross-refs at load.
+- formats/  pure parsers over bytes (bsp, vtf, vmt, studio). No I/O. Validate all cross-refs at load. Use common/bytes.h readAt for new binary readers.
 - compat/   Source-facing ABI: interface registry, CreateInterface. Later: engine interfaces for game DLLs.
 - engine/   entry point, console/cvars, clock, main loop.
 - tests/    unit tests (synthetic data only), tests/data/testgame (smoke test game dir).

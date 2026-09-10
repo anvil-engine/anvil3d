@@ -10,5 +10,5 @@
 4. [x] BSP lumps for world: planes, vertices, edges, surfedges, faces, texinfo, texdata, models, entities (text).
 5. [x] VTF header + mip/format table (DXT1/3/5, BGRA8888, BGR888, etc.) + test.
 6. [x] VMT: shader + params, DX9/HDR fallback blocks, `cond?$param`, patch shader.
-7. [ ] MDL/VVD/VTX headers + test.
+7. [x] MDL/VVD/VTX: LOD0 default body -> vertices + per-mesh triangles, materials, skins.
 8. [ ] BSP: nodes/leafs/visibility, displacements, game lump (static props), pakfile (zip) lump.
