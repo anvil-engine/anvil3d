@@ -13,6 +13,7 @@ Source game DLLs (client/server)
 - filesystem/ virtual FS, search paths, gameinfo.txt. OS paths stop here.
 - formats/  pure parsers over bytes (bsp, vtf, vmt, studio). No I/O. Validate all cross-refs at load. Use common/bytes.h readAt for new binary readers.
 - render/   backend-neutral API: Device, textures, Batch2D (render::2d). render/vulkan/: the only backend so far (all Vulkan types stay there).
+- materials/ CPU-side material system: VTF -> render::TextureData (BC decode/convert). No backend knowledge.
 - devui/    Dear ImGui developer overlay (optional, ANVIL_DEVUI). Internal only; not VGUI. Draws via render::2d.
 - compat/   Source-facing ABI: interface registry, CreateInterface. Later: engine interfaces for game DLLs.
 - engine/   entry point, console/cvars, clock, main loop.

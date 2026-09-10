@@ -3,6 +3,11 @@
 ## M1 leftovers
 - [ ] Verify build on Windows (MSVC 2022, vcpkg SDL3).
 
+## M3 follow-ups (not blocking)
+- [ ] Per-device volk tables (VolkDeviceTable) if more than one Vulkan device per process is ever needed.
+- [ ] HDR texture format (RGBA16F) instead of clamping RGBA16161616F to RGBA8.
+- [ ] Async texture upload (transfer ring) instead of vkQueueWaitIdle per texture.
+
 ## Before first binary release
 - [ ] licenses/ with SDL3 (zlib) and Dear ImGui (MIT) texts.
 
@@ -20,8 +25,9 @@
 8. [x] BSP: nodes/leafs/visibility, displacements, game lump (static props), pakfile (zip) lump.
 
 ## M3 (in order)
+0. [x] Vulkan sync/lifetime pass (validation + sync validation clean). [x] VMA.
 1. [x] render::2d + render::Device API; Vulkan backend (swapchain + headless offscreen); RGBA8 textures.
-2. [ ] VTF -> anvil texture (CPU, format + mips) -> render::Texture: BC1-3 direct upload when caps.textureCompressionBC, CPU decode otherwise; mips; decode (DXT1/3/5, BGR(A)888x, RGBA16F, UV88); material -> texture binding.
+2. [x] VTF -> render::TextureData (materials/texture) -> render::Texture: BC1-3 native when caps.textureCompressionBC, CPU decode otherwise; mip chains; sampler addressing from VTF flags. (DXT1/3/5, BGR(A)888x, RGBA16F, UV88); material -> texture binding.
 3. [ ] World mesh builder: faces -> polygons, displacement grids, lightmap atlas; LightmappedGeneric/WorldVertexTransition basics.
 4. [ ] Static props via studio loader; skybox (sky shader, 2D skybox camera later).
 5. [ ] PVS/frustum culling; `map <name>` command mounts pakfile, loads BSP, renders.

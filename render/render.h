@@ -26,12 +26,25 @@ struct Capabilities {
 // 0 = no texture; 2D draws with texture 0 sample opaque white.
 using TextureHandle = uint32_t;
 
-enum class TextureFormat { RGBA8 };
+// RGBA8: R in the lowest byte. BC1/2/3 = DXT1/3/5 blocks (BC1 decodes with 1-bit alpha).
+// BC formats require caps().textureCompressionBC; otherwise decode to RGBA8 on the CPU first.
+enum class TextureFormat { RGBA8, BC1, BC2, BC3 };
+
+// Bytes of one width x height image (block formats round up to 4x4 blocks).
+uint64_t textureBytes(TextureFormat format, uint32_t width, uint32_t height);
 
 struct TextureDesc {
   uint32_t width = 0, height = 0;
   TextureFormat format = TextureFormat::RGBA8;
-  bool linearFilter = true;
+  uint32_t mipCount = 1;     // pixel data holds mips largest-first, each tightly packed
+  bool linearFilter = true;  // also linear between mips when mipCount > 1
+  bool clampS = true, clampT = true; // false = repeat (world textures tile)
+};
+
+// Backend-neutral CPU texture: what loaders (e.g. materials::textureFromVtf) produce and createTexture consumes.
+struct TextureData {
+  TextureDesc desc;
+  std::vector<uint8_t> pixels;
 };
 
 // ---- 2D path: shared by the developer UI and (later) VGUI's surface. ----
@@ -72,6 +85,7 @@ struct DeviceOptions {
   uint32_t width = 0, height = 0;     // headless target size
   bool vsync = true;
   bool debug = false;                 // backend validation layers when available
+  bool forceUncompressedTextures = false; // report no BC support (tests the CPU-decode path on any GPU)
 };
 
 class Device {
@@ -80,8 +94,9 @@ public:
 
   virtual const Capabilities& caps() const = 0;
 
-  // Returns 0 (logged) on failure. `pixels` holds width*height*4 bytes for RGBA8.
+  // Returns 0 (logged) on failure: bad size, missing mip data, or a format the device lacks.
   virtual TextureHandle createTexture(const TextureDesc& desc, std::span<const uint8_t> pixels) = 0;
+  TextureHandle createTexture(const TextureData& data) { return createTexture(data.desc, data.pixels); }
   // Freed once no frame in flight can still use it.
   virtual void destroyTexture(TextureHandle texture) = 0;
 

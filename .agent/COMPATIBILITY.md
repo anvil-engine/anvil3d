@@ -12,6 +12,7 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 | VPK         | WORKING     | UNKNOWN     | UNKNOWN     |
 | BSP         | PARTIAL (parse; no brushes/areaportals/water/overlays/cubemaps) | NOT STARTED | NOT STARTED |
 | Materials   | PARTIAL     | NOT STARTED | NOT STARTED |
+| Textures    | PARTIAL (VTF->GPU; no frames/cubemaps/HDR) | NOT STARTED | NOT STARTED |
 | Models      | PARTIAL     | NOT STARTED | NOT STARTED |
 | Physics     | NOT STARTED | NOT STARTED | NOT STARTED |
 | VGUI        | NOT STARTED | NOT STARTED | NOT STARTED |

@@ -1,7 +1,7 @@
 # Status
 
 Version: 0.10.0 (dev)
-Milestone: M3 Renderer — in progress. render::Device + render::2d + Vulkan backend done; next VTF textures, world mesh.
+Milestone: M3 Renderer — in progress. Device/2D/Vulkan, sync pass, VMA, VTF textures (BC native + CPU fallback) done; next world mesh.
 
 ## Working
 - Build verified: macOS arm64 (AppleClang 21), Linux arm64 (Ubuntu 25.04, GCC 14, via podman). Windows unverified.
@@ -19,6 +19,8 @@ Milestone: M3 Renderer — in progress. render::Device + render::2d + Vulkan bac
 - formats/studio: MDL v44-48 + VVD v4 (fixups) + VTX v7 (trilists/tristrips) -> LOD0 default body; checksums cross-checked. 2171/2171 HL2 models load (`studio_hl2`). No skeleton/anim/flex/bodygroups yet.
 - devui/: optional Dear ImGui overlay (`-DANVIL_DEVUI=ON`, run with `-devui`), drawn via render::2d; ImGui textures via RendererHasTextures.
 - render/: backend-neutral Device (textures, frames, draw2d, caps, headless readPixels). render/vulkan: MoltenVK/native via volk, portability enumeration/subset, swapchain resize/out-of-date, deferred destruction, 2D pipeline. Verified: Apple M4 (MoltenVK, Vulkan 1.1.323) windowed + headless; llvmpipe (Linux) headless under Khronos validation: no messages.
+- materials/texture: VTF -> render::TextureData (mips, BC1-3 kept or decoded, other formats -> RGBA8). All 5237 HL2 textures convert on both paths (`vtf_hl2`).
+- render: TextureFormat RGBA8/BC1/BC2/BC3, mip chains, clamp/repeat samplers; DeviceOptions::forceUncompressedTextures. VMA for all Vulkan memory.
 - engine: renders every frame (clear + devui); flags -norender, -novsync, -vkdebug.
 - Tests: cmdline, keyvalues, filesystem, console(+clock), interfaces (real module load), smoke (tests/data/testgame).
 

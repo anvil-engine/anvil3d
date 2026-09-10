@@ -115,3 +115,11 @@ IMPACT: Verified with Khronos validation + synchronization validation on llvmpip
 DECISION: Vulkan memory via VMA v3.4.0 (MIT), pinned by URL + SHA256; implementation in render/vulkan/vma.cpp; entry points from volk (VMA_DYNAMIC_VULKAN_FUNCTIONS=1, STATIC=0).
 REASON: Approved in review. Per-resource vkAllocateMemory would hit maxMemoryAllocationCount (often 4096) with world geometry and textures; VMA is the standard, tested sub-allocator.
 IMPACT: VMA types stay inside render/vulkan/device.cpp. Host-visible allocations are flushed/invalidated explicitly (non-coherent memory safe).
+
+DECISION: Texture path: materials::textureFromVtf keeps DXT1/3/5 as BC1/2/3 when the device reports textureCompressionBC, else decodes on the CPU; all other VTF formats convert to RGBA8. Frame 0 / face 0 / slice 0 only for now.
+REASON: Approved in review; BC optional on desktop Vulkan, required path for GLES later.
+IMPACT: RGBA16161616F is clamped to RGBA8 (HDR lost) until an HDR format exists. Conversions for ARGB8888, RGB565, BGRX5551, BGRA5551, BGRA4444 are UNVERIFIED (not used by HL2; D3D channel conventions assumed).
+
+DECISION: One Vulkan device per process.
+REASON: volk stores device-level entry points globally (volkLoadDevice).
+IMPACT: Tests create devices sequentially. Switch to VolkDeviceTable if multiple devices are ever needed.

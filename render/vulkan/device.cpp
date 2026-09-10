@@ -112,6 +112,7 @@ private:
   bool createFramebuffers();
   bool create2dPipeline();
   bool create2dPipelineOnly();
+  VkSampler sampler(const TextureDesc& desc);
   bool createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, HostAccess host, Buffer& out);
   bool createImage(const VkImageCreateInfo& info, Texture& out);
   void destroyBuffer(Buffer& b);
@@ -132,6 +133,7 @@ private:
   uint32_t queueFamily_ = 0;
   VkQueue queue_ = VK_NULL_HANDLE;
   bool portabilitySubset_ = false;
+  bool forceUncompressed_ = false;
 
   VkFormat colorFormat_ = VK_FORMAT_UNDEFINED;
   VkExtent2D extent_{};
@@ -156,7 +158,7 @@ private:
   VkPipelineLayout pipelineLayout_ = VK_NULL_HANDLE;
   VkPipeline pipeline2d_ = VK_NULL_HANDLE;
   VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
-  VkSampler samplers_[2] = {}; // [0] nearest, [1] linear
+  std::vector<std::pair<uint32_t, VkSampler>> samplers_; // key: filter/address/mip bits, created on demand
   VkCommandPool uploadPool_ = VK_NULL_HANDLE;
 
   std::vector<Texture> textures_;        // index = handle; [0] = white
@@ -176,6 +178,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBits
 bool VulkanDevice::init(const DeviceOptions& options) {
   window_ = options.window;
   vsync_ = options.vsync;
+  forceUncompressed_ = options.forceUncompressedTextures;
   caps_.backend = "vulkan";
 
   auto* getProc = reinterpret_cast<PFN_vkGetInstanceProcAddr>(platform::vulkanGetInstanceProcAddr());
@@ -221,7 +224,10 @@ bool VulkanDevice::init(const DeviceOptions& options) {
   // Handle 0: opaque white, so untextured 2D (and VGUI solid fills) share the textured pipeline.
   textures_.emplace_back();
   const uint8_t white[4] = {255, 255, 255, 255};
-  const TextureHandle w = createTexture({1, 1, TextureFormat::RGBA8, false}, white);
+  TextureDesc whiteDesc;
+  whiteDesc.width = whiteDesc.height = 1;
+  whiteDesc.linearFilter = false;
+  const TextureHandle w = createTexture(whiteDesc, white);
   if (!w) return false;
   std::swap(textures_[0], textures_[w]);
   textures_.pop_back();
@@ -330,7 +336,7 @@ bool VulkanDevice::pickDevice() {
                      std::to_string(VK_API_VERSION_MINOR(props.apiVersion)) + "." +
                      std::to_string(VK_API_VERSION_PATCH(props.apiVersion));
   caps_.maxTextureSize = props.limits.maxImageDimension2D;
-  caps_.textureCompressionBC = features.textureCompressionBC;
+  caps_.textureCompressionBC = features.textureCompressionBC && !forceUncompressed_;
   return true;
 }
 
@@ -577,13 +583,6 @@ bool VulkanDevice::create2dPipeline() {
   dpci.poolSizeCount = 1;
   dpci.pPoolSizes = &poolSize;
   if (!check(vkCreateDescriptorPool(device_, &dpci, nullptr, &descriptorPool_), "vkCreateDescriptorPool")) return false;
-  for (int linear = 0; linear < 2; ++linear) {
-    VkSamplerCreateInfo sci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-    sci.magFilter = sci.minFilter = linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
-    sci.addressModeU = sci.addressModeV = sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    sci.maxLod = VK_LOD_CLAMP_NONE;
-    if (!check(vkCreateSampler(device_, &sci, nullptr, &samplers_[linear]), "vkCreateSampler")) return false;
-  }
   return create2dPipelineOnly();
 }
 
@@ -697,19 +696,68 @@ void VulkanDevice::destroyTextureNow(Texture& t) {
   t = {};
 }
 
+VkSampler VulkanDevice::sampler(const TextureDesc& desc) {
+  const uint32_t key = (desc.linearFilter ? 1u : 0u) | (desc.clampS ? 2u : 0u) | (desc.clampT ? 4u : 0u) |
+                       (desc.mipCount > 1 ? 8u : 0u);
+  for (const auto& [k, smp] : samplers_)
+    if (k == key) return smp;
+  VkSamplerCreateInfo sci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+  sci.magFilter = sci.minFilter = desc.linearFilter ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+  sci.mipmapMode = desc.linearFilter ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
+  sci.addressModeU = desc.clampS ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  sci.addressModeV = desc.clampT ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+  sci.maxLod = desc.mipCount > 1 ? VK_LOD_CLAMP_NONE : 0.0f;
+  VkSampler smp = VK_NULL_HANDLE;
+  if (!check(vkCreateSampler(device_, &sci, nullptr, &smp), "vkCreateSampler")) return VK_NULL_HANDLE;
+  samplers_.emplace_back(key, smp);
+  return smp;
+}
+
 TextureHandle VulkanDevice::createTexture(const TextureDesc& desc, std::span<const uint8_t> pixels) {
-  const VkDeviceSize bytes = VkDeviceSize(desc.width) * desc.height * 4;
-  if (desc.width == 0 || desc.height == 0 || desc.width > caps_.maxTextureSize || desc.height > caps_.maxTextureSize ||
-      pixels.size() < bytes) {
-    ANVIL_ERROR("vulkan", "Bad texture %ux%u (%zu bytes)", desc.width, desc.height, pixels.size());
+  VkFormat format = VK_FORMAT_UNDEFINED;
+  switch (desc.format) {
+    case TextureFormat::RGBA8: format = VK_FORMAT_R8G8B8A8_UNORM; break;
+    case TextureFormat::BC1: format = VK_FORMAT_BC1_RGBA_UNORM_BLOCK; break; // DXT1 incl. 1-bit alpha
+    case TextureFormat::BC2: format = VK_FORMAT_BC2_UNORM_BLOCK; break;
+    case TextureFormat::BC3: format = VK_FORMAT_BC3_UNORM_BLOCK; break;
+  }
+  const bool compressed = desc.format != TextureFormat::RGBA8;
+  uint32_t maxMips = 1;
+  while (((desc.width | desc.height) >> maxMips) != 0) ++maxMips;
+  if (compressed && !caps_.textureCompressionBC) {
+    ANVIL_ERROR("vulkan", "BC texture on a device without BC support (decode to RGBA8 first)");
     return 0;
   }
+  if (desc.width == 0 || desc.height == 0 || desc.width > caps_.maxTextureSize || desc.height > caps_.maxTextureSize ||
+      desc.mipCount == 0 || desc.mipCount > maxMips) {
+    ANVIL_ERROR("vulkan", "Bad texture %ux%u, %u mips", desc.width, desc.height, desc.mipCount);
+    return 0;
+  }
+  // One copy region per mip, offsets into the tightly packed chain (largest first).
+  std::vector<VkBufferImageCopy> regions(desc.mipCount);
+  VkDeviceSize bytes = 0;
+  for (uint32_t m = 0; m < desc.mipCount; ++m) {
+    const uint32_t w = std::max(desc.width >> m, 1u), h = std::max(desc.height >> m, 1u);
+    regions[m] = {};
+    regions[m].bufferOffset = bytes;
+    regions[m].imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, m, 0, 1};
+    regions[m].imageExtent = {w, h, 1};
+    bytes += textureBytes(desc.format, w, h);
+  }
+  if (pixels.size() < bytes) {
+    ANVIL_ERROR("vulkan", "Texture data too short: %zu of %llu bytes", pixels.size(), (unsigned long long)bytes);
+    return 0;
+  }
+  const VkSampler smp = sampler(desc);
+  if (!smp) return 0;
+
   Texture t;
   VkImageCreateInfo ici{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
   ici.imageType = VK_IMAGE_TYPE_2D;
-  ici.format = VK_FORMAT_R8G8B8A8_UNORM;
+  ici.format = format;
   ici.extent = {desc.width, desc.height, 1};
-  ici.mipLevels = 1;
+  ici.mipLevels = desc.mipCount;
   ici.arrayLayers = 1;
   ici.samples = VK_SAMPLE_COUNT_1_BIT;
   ici.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -736,15 +784,12 @@ TextureHandle VulkanDevice::createTexture(const TextureDesc& desc, std::span<con
   VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
   barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
   barrier.image = t.image;
-  barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+  barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, desc.mipCount, 0, 1};
   barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
   barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
   barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
   vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-  VkBufferImageCopy region{};
-  region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
-  region.imageExtent = {desc.width, desc.height, 1};
-  vkCmdCopyBufferToImage(cmd, staging.buffer, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+  vkCmdCopyBufferToImage(cmd, staging.buffer, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, desc.mipCount, regions.data());
   barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
   barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
   barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -766,8 +811,8 @@ TextureHandle VulkanDevice::createTexture(const TextureDesc& desc, std::span<con
   VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
   vci.image = t.image;
   vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-  vci.format = VK_FORMAT_R8G8B8A8_UNORM;
-  vci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+  vci.format = format;
+  vci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, desc.mipCount, 0, 1};
   VkDescriptorSetAllocateInfo dai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
   dai.descriptorPool = descriptorPool_;
   dai.descriptorSetCount = 1;
@@ -777,7 +822,7 @@ TextureHandle VulkanDevice::createTexture(const TextureDesc& desc, std::span<con
     destroyTextureNow(t);
     return 0;
   }
-  VkDescriptorImageInfo info{samplers_[desc.linearFilter ? 1 : 0], t.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+  VkDescriptorImageInfo info{smp, t.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
   VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
   write.dstSet = t.set;
   write.descriptorCount = 1;
@@ -998,8 +1043,7 @@ VulkanDevice::~VulkanDevice() {
       if (f.pool) vkDestroyCommandPool(device_, f.pool, nullptr);
     }
     if (uploadPool_) vkDestroyCommandPool(device_, uploadPool_, nullptr);
-    for (VkSampler s : samplers_)
-      if (s) vkDestroySampler(device_, s, nullptr);
+    for (auto& [key, smp] : samplers_) vkDestroySampler(device_, smp, nullptr);
     if (descriptorPool_) vkDestroyDescriptorPool(device_, descriptorPool_, nullptr);
     if (pipeline2d_) vkDestroyPipeline(device_, pipeline2d_, nullptr);
     if (pipelineLayout_) vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);

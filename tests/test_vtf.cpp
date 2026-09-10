@@ -1,5 +1,6 @@
 #include "filesystem/vpk.h"
 #include "formats/vtf.h"
+#include "materials/texture.h"
 #include "check.h"
 
 #include <cstring>
@@ -65,6 +66,14 @@ int main(int argc, char** argv) {
         if (!tex) std::fprintf(stderr, "%s: %s\n", path.c_str(), err.c_str());
         CHECK(tex.has_value());
         if (tex) ++formats[std::string(vtf::formatName(tex->format)) + " 7." + std::to_string(tex->versionMinor)];
+        // Both texture paths must convert every HL2 texture (BC kept, and BC decoded to RGBA8).
+        if (tex) {
+          for (bool allowBC : {true, false}) {
+            const auto data = materials::textureFromVtf(*tex, allowBC, &err);
+            if (!data) std::fprintf(stderr, "%s: %s\n", path.c_str(), err.c_str());
+            CHECK(data.has_value());
+          }
+        }
         ++total;
       }
     }

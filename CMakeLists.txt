@@ -45,6 +45,10 @@ if(ANVIL_VULKAN)
   anvil_add_shader(anvil_render render/vulkan/shaders/ui.frag kUiFrag)
 endif()
 
+# Material system (CPU side): VTF -> render::TextureData, BC decode. No GPU backend knowledge.
+add_library(anvil_materials STATIC materials/texture.cpp)
+target_link_libraries(anvil_materials PUBLIC anvil_formats anvil_render)
+
 # Developer UI (Dear ImGui). Internal tooling only, never the game's VGUI. OFF = no dependency, no-op API.
 add_library(anvil_devui STATIC devui/devui.cpp)
 target_link_libraries(anvil_devui PUBLIC anvil_common anvil_render)
@@ -54,18 +58,18 @@ if(ANVIL_DEVUI)
 endif()
 
 add_library(anvil_engine STATIC engine/console.cpp compat/interfaces.cpp)
-target_link_libraries(anvil_engine PUBLIC anvil_platform anvil_filesystem anvil_formats anvil_render anvil_devui)
+target_link_libraries(anvil_engine PUBLIC anvil_platform anvil_filesystem anvil_formats anvil_render anvil_materials anvil_devui)
 
 add_executable(anvil engine/main.cpp)
 target_link_libraries(anvil PRIVATE anvil_engine)
 target_compile_definitions(anvil PRIVATE ANVIL_VERSION="${PROJECT_VERSION}")
 
 enable_testing()
-foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio console devui render swapchain interfaces)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio textures console devui render swapchain interfaces)
   add_executable(test_${name} tests/test_${name}.cpp)
   target_link_libraries(test_${name} PRIVATE anvil_engine)
 endforeach()
-foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio console devui render swapchain)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio textures console devui render swapchain)
   add_test(NAME ${name} COMMAND test_${name})
 endforeach()
 # GPU tests: 77 = skipped (no Vulkan / no display); any validation-layer message fails the test.

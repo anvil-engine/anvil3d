@@ -1,14 +1,24 @@
 // Renders render::2d batches on a headless device and checks the pixels. Exits 77 (skipped) without Vulkan.
+#include "materials/texture.h"
 #include "render/render.h"
 #include "check.h"
 
 #include <cstdlib>
+#include <cstring>
 
 using namespace anvil::render;
 
 namespace {
 
 constexpr uint32_t kSize = 64;
+
+TextureDesc nearestRgba(uint32_t w, uint32_t h) {
+  TextureDesc d;
+  d.width = w;
+  d.height = h;
+  d.linearFilter = false;
+  return d;
+}
 
 uint32_t rgba(uint8_t r, uint8_t g, uint8_t b, uint8_t a) { return r | (g << 8) | (b << 16) | (uint32_t(a) << 24); }
 
@@ -45,7 +55,7 @@ int main() {
 
   CHECK(device->createTexture({0, 0}, {}) == 0);
   const uint8_t texels[16] = {255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255};
-  const TextureHandle tex = device->createTexture({2, 2, TextureFormat::RGBA8, false}, texels);
+  const TextureHandle tex = device->createTexture(nearestRgba(2, 2), texels);
   CHECK(tex != 0);
 
   const Rect full{0, 0, int32_t(kSize), int32_t(kSize)};
@@ -86,7 +96,7 @@ int main() {
   }
 
   // Lifetime: a texture destroyed inside the frame that draws it stays alive until that frame completes.
-  const TextureHandle doomed = device->createTexture({2, 2, TextureFormat::RGBA8, false}, texels);
+  const TextureHandle doomed = device->createTexture(nearestRgba(2, 2), texels);
   CHECK(doomed != 0);
   CHECK(device->beginFrame(black));
   Batch2D d;
@@ -96,7 +106,7 @@ int main() {
   device->endFrame();
   px = device->readPixels();
   if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 40, 8, 255, 0, 0) && pixelNear(px, 56, 8, 0, 255, 0));
-  const TextureHandle reused = device->createTexture({1, 1, TextureFormat::RGBA8, false}, texels); // may reuse the handle
+  const TextureHandle reused = device->createTexture(nearestRgba(1, 1), texels); // may reuse the handle
   CHECK(reused != 0);
 
   // Lifetime: per-frame buffers grow mid-frame (old buffer retired with the frame), across many frames.
@@ -113,5 +123,57 @@ int main() {
   px = device->readPixels();
   if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 8, 40, 255, 0, 0));
   device->destroyTexture(reused);
+
+  // Formats: BC1 natively when the GPU supports it; RGBA8 mip chain; validation of short data.
+  std::string redBlock(8, '\0');
+  const uint16_t red565 = 0xF800;
+  std::memcpy(redBlock.data(), &red565, 2);
+  std::memcpy(redBlock.data() + 2, &red565, 2);
+  auto drawFull = [&](Device& dev, TextureHandle t) {
+    Batch2D q;
+    quad(q, 0, 0, 64, 64, rgba(255, 255, 255, 255), t, full);
+    CHECK(dev.beginFrame(black));
+    dev.draw2d(q);
+    dev.endFrame();
+    return dev.readPixels();
+  };
+  TextureDesc bcDesc = nearestRgba(4, 4);
+  bcDesc.format = TextureFormat::BC1;
+  if (device->caps().textureCompressionBC) {
+    const TextureHandle bcTex = device->createTexture(bcDesc, {reinterpret_cast<const uint8_t*>(redBlock.data()), 8});
+    CHECK(bcTex != 0);
+    px = drawFull(*device, bcTex);
+    if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 30, 30, 255, 0, 0));
+    device->destroyTexture(bcTex);
+  } else {
+    std::puts("device lacks BC: native BC path not exercised here");
+  }
+  TextureDesc mipDesc = nearestRgba(2, 2);
+  mipDesc.mipCount = 2; // 2x2 + 1x1
+  const uint8_t chain[20] = {0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 9, 9, 9, 255};
+  const TextureHandle mipTex = device->createTexture(mipDesc, chain);
+  CHECK(mipTex != 0);
+  px = drawFull(*device, mipTex); // magnified: samples mip 0 (green)
+  if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 30, 30, 0, 255, 0));
+  CHECK(device->createTexture(mipDesc, {chain, 16}) == 0); // 1x1 mip missing
+  mipDesc.mipCount = 3;
+  CHECK(device->createTexture(mipDesc, chain) == 0); // more mips than 2x2 has
+  device->destroyTexture(mipTex);
+
+  // CPU fallback: a device forced to report no BC rejects BC1 and draws the decoded RGBA8 instead.
+  // One Vulkan device at a time (volk keeps device entry points process-global).
+  device.reset();
+  options.forceUncompressedTextures = true;
+  device = createDevice(options);
+  CHECK(device && !device->caps().textureCompressionBC);
+  if (device) {
+    CHECK(device->createTexture(bcDesc, {reinterpret_cast<const uint8_t*>(redBlock.data()), 8}) == 0);
+    std::vector<uint8_t> decoded(4 * 4 * 4);
+    anvil::materials::decodeBC(TextureFormat::BC1, redBlock, 4, 4, decoded.data());
+    const TextureHandle fallback = device->createTexture(nearestRgba(4, 4), decoded);
+    CHECK(fallback != 0);
+    px = drawFull(*device, fallback);
+    if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 30, 30, 255, 0, 0));
+  }
   return TEST_RESULT();
 }
