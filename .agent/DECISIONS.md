@@ -59,3 +59,7 @@ IMPACT: Real corruption is not blocked at read time; vpk_hl2 test reports mismat
 DECISION: VPK part files are opened per read (no handle cache); archive MD5/signature sections ignored.
 REASON: Simplest thread-safe design; integrity sections are for distribution tooling, not runtime.
 IMPACT: Add handle cache if file-open cost appears in load-time profiles.
+
+DECISION: VTF cubemaps before 7.5 have 7 faces (extra spheremap) unless firstFrame == 0xFFFF; 7.5 has 6.
+REASON: Public VTF docs; exact file-size validation passes on all 5237 HL2 textures with this rule.
+IMPACT: Renderer uses faces 0-5 only.
