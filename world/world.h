@@ -50,10 +50,12 @@ public:
   Camera spawnPoint() const;                           // first info_player_start at eye height, else origin
   const bsp::Map& map() const { return map_; }
   size_t missingAssets() const { return missing_; }    // materials or textures that failed to resolve
+  const std::string& skyName() const { return skyName_; } // worldspawn skyname as resolved ("" = no sky)
 
 private:
   World(FileSystem& fs, render::Device* device) : fs_(fs), device_(device) {}
   void setupMaterials(const Mesh& mesh);
+  void setupSky();
   render::TextureHandle texture(std::string_view name);
 
   FileSystem& fs_;
@@ -69,12 +71,15 @@ private:
     uint32_t firstFace, faceCount;
   };
   std::vector<Material> materials_;
+  render::MeshHandle skyMesh_ = 0;
+  std::vector<render::Draw3D> skyDraws_; // one per cube face that has a material
   std::vector<MeshFace> faces_;
   std::unique_ptr<Visibility> visibility_;
   std::vector<uint8_t> visible_;        // per face, this frame
   std::vector<render::Draw3D> frameDraws_;
   DrawStats stats_;
   size_t missing_ = 0;
+  std::string skyName_;
 };
 
 } // namespace anvil::world

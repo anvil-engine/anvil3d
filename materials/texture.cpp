@@ -3,8 +3,11 @@
 #include "common/log.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
+#include <vector>
 
 namespace anvil::materials {
 namespace {
@@ -203,6 +206,35 @@ std::optional<render::TextureData> textureFromVtf(const vtf::Texture& vtf, bool 
     offset += size_t(render::textureBytes(out.desc.format, w, h));
   }
   return out;
+}
+
+TextureTransform parseTextureTransform(std::string_view text) {
+  TextureTransform t;
+  std::vector<std::string> tokens;
+  for (size_t i = 0; i < text.size();) {
+    while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i]))) ++i;
+    const size_t start = i;
+    while (i < text.size() && !std::isspace(static_cast<unsigned char>(text[i]))) ++i;
+    if (i > start) tokens.emplace_back(text.substr(start, i - start));
+  }
+  auto number = [&](size_t k, float& out) {
+    if (k < tokens.size()) out = std::strtof(tokens[k].c_str(), nullptr);
+  };
+  for (size_t k = 0; k < tokens.size(); ++k) {
+    if (tokens[k] == "center") {
+      number(k + 1, t.centerU);
+      number(k + 2, t.centerV);
+    } else if (tokens[k] == "scale") {
+      number(k + 1, t.scaleU);
+      number(k + 2, t.scaleV);
+    } else if (tokens[k] == "rotate") {
+      number(k + 1, t.rotate);
+    } else if (tokens[k] == "translate") {
+      number(k + 1, t.translateU);
+      number(k + 2, t.translateV);
+    }
+  }
+  return t;
 }
 
 } // namespace anvil::materials

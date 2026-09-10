@@ -2,11 +2,13 @@
 // (CPU), then renders d1_trainstation_01 headless (skipped without Vulkan). ANVIL_WORLD_SHOT=<file.bmp> saves it.
 #include "filesystem/filesystem.h"
 #include "filesystem/gameinfo.h"
+#include "world/sky.h"
 #include "world/visibility.h"
 #include "world/world.h"
 #include "world/worldmesh.h"
 #include "check.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -224,6 +226,34 @@ int realData(const std::filesystem::path& modDir) {
       CHECK(s.cluster >= 0 && s.pvsFaces < s.faces && s.frustumFaces <= s.pvsFaces && s.submittedFaces <= s.frustumFaces);
       CHECK(px.size() == all.size() && differ == 0);
     }
+    // Sky: look at the largest sky face from inside the world; nothing may show the clear color.
+    const bsp::Map& m = w->map();
+    const bsp::Face* skyFace = nullptr;
+    for (int32_t i = m.models[0].firstface; i < m.models[0].firstface + m.models[0].numfaces; ++i) {
+      const bsp::Face& f = m.faces[size_t(i)];
+      if (f.texinfo >= 0 && (m.texinfos[size_t(f.texinfo)].flags & bsp::SURF_SKY) && (!skyFace || f.area > skyFace->area))
+        skyFace = &f;
+    }
+    CHECK(skyFace != nullptr && !w->skyName().empty());
+    if (skyFace) {
+      std::vector<bsp::Vec3> poly;
+      bsp::faceVertices(m, *skyFace, poly);
+      bsp::Vec3 c{};
+      for (const bsp::Vec3& p : poly) c = {c.x + p.x / poly.size(), c.y + p.y / poly.size(), c.z + p.z / poly.size()};
+      bsp::Vec3 n = m.planes[skyFace->planenum].normal;
+      if (skyFace->side) n = {-n.x, -n.y, -n.z}; // face front = the world side
+      world::Camera cam{{c.x + n.x * 128, c.y + n.y * 128, c.z + n.z * 128}, 0, 0};
+      cam.pitch = std::asin(std::clamp(n.z, -1.0f, 1.0f)) * 180 / 3.14159265f; // look along -n
+      cam.yaw = std::atan2(-n.y, -n.x) * 180 / 3.14159265f;
+      cam.pitch = std::clamp(cam.pitch, -89.0f, 89.0f);
+      const auto sky = render(cam, true);
+      size_t bare = 0;
+      for (size_t i = 0; i + 3 < sky.size(); i += 4) bare += sky[i] == 255 && sky[i + 1] == 0 && sky[i + 2] == 255;
+      std::printf("sky %s: view of sky face at (%.0f %.0f %.0f), %zu clear-color pixels\n", w->skyName().c_str(),
+                  c.x, c.y, c.z, bare);
+      CHECK(bare == 0);
+      if (const char* shot = std::getenv("ANVIL_WORLD_SHOT")) writeBmp((std::string(shot) + ".sky.bmp").c_str(), sky, 1280, 720);
+    }
     px = render(w->spawnPoint(), true);
     size_t covered = 0;
     for (size_t i = 0; i + 3 < px.size(); i += 4) covered += !(px[i] == 255 && px[i + 1] == 0 && px[i + 2] == 255);
@@ -307,5 +337,24 @@ int main(int argc, char** argv) {
   clip(cam, {10, 0, -20}, c);
   CHECK(near(c[0], 0) && near(c[1], 0) && near(c[3], 20));
   visibilityTests();
+
+  // Sky cube: faces meet at shared corners (layout derived from HL2 sky texture seams, DECISIONS.md).
+  std::vector<render::Vertex3D> sv;
+  std::vector<uint32_t> si;
+  world::skyMesh(1.0f, sv, si);
+  CHECK(sv.size() == 24 && si.size() == 36);
+  if (sv.size() == 24) {
+    auto corner = [&](int face, float u, float v) {
+      for (int k = 0; k < 4; ++k)
+        if (sv[face * 4 + k].u == u && sv[face * 4 + k].v == v) return &sv[face * 4 + k];
+      return &sv[0];
+    };
+    CHECK(vertexAt(sv[0], 1, 1, 1)); // rt top-left: +X face, left edge toward +Y (bk)
+    CHECK(vertexAt(*corner(0, 1, 0), 1, -1, 1) && vertexAt(*corner(1, 0, 0), 1, -1, 1)); // rt right edge = ft left
+    CHECK(vertexAt(*corner(3, 1, 0), 1, 1, 1));                                         // bk right edge = rt left
+    CHECK(vertexAt(*corner(4, 0, 1), 1, 1, 1) && vertexAt(*corner(4, 1, 1), 1, -1, 1)); // up bottom = rt top
+    CHECK(vertexAt(*corner(5, 0, 0), 1, 1, -1) && vertexAt(*corner(5, 1, 0), 1, -1, -1)); // dn top = rt bottom
+    CHECK(vertexAt(*corner(5, 1, 1), -1, -1, -1));                                      // dn right edge = ft bottom
+  }
   return TEST_RESULT();
 }

@@ -93,6 +93,7 @@ enum class Blend : uint8_t {
   Opaque,      // depth test + write, no blending
   AlphaTest,   // as Opaque, texels with alpha < alphaRef discarded
   Translucent, // depth test, no depth write, dst = src * a + dst * (1 - a); caller orders draws
+  Background,  // no depth test, no depth write, no blending: draw first, behind the scene (skybox)
 };
 
 // Fixed two-texture modulate: rgb = texture(u,v).rgb * lightmap(lu,lv).rgb * colorScale, alpha = texture alpha.

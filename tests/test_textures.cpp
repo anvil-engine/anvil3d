@@ -92,6 +92,17 @@ int main() {
   CHECK(conv(vtf::BGRA5551, std::string("\x1F\x00", 2)) && texel(one, 1, 0, 0, 0, 0, 255, 0));
   CHECK(conv(vtf::BGRA4444, std::string("\x34\x12", 2)) && texel(one, 1, 0, 0, 34, 51, 68, 17)); // A R G B nibbles
 
+  // $basetexturetransform: HL2 sky sides use "center 0 0 scale 1 2" (texture covers the upper half of the face).
+  auto tt = materials::parseTextureTransform("center 0 0 scale 1 2 rotate 0 translate 0 0");
+  float tu = 0.5f, tv = 0.75f;
+  tt.apply(tu, tv);
+  CHECK(tu == 0.5f && tv == 1.5f && tt.rotate == 0);
+  tt = materials::parseTextureTransform("scale 2 2 translate 0.25 0"); // default center 0.5 0.5
+  tu = tv = 1.0f;
+  tt.apply(tu, tv);
+  CHECK(tu == 1.75f && tv == 1.5f);
+  CHECK(materials::parseTextureTransform("rotate 90").rotate == 90);
+
   // VTF -> TextureData: DXT1 8x8 with 4 mips, both paths.
   const std::string red = bc1(0xF800, 0xF800, 0);
   std::string mips = red /*1x1*/ + red /*2x2*/ + red /*4x4*/ + red + red + red + red /*8x8*/;

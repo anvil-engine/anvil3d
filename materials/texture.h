@@ -23,4 +23,16 @@ bool convertToRGBA8(vtf::Format format, std::string_view src, uint32_t w, uint32
 // CLAMPS/CLAMPT flags, filtering POINTSAMPLE. Null (with error) for unsupported formats.
 std::optional<render::TextureData> textureFromVtf(const vtf::Texture& vtf, bool allowBC, std::string* error = nullptr);
 
+// VMT texture transform ($basetexturetransform): "center cu cv scale su sv rotate deg translate tu tv", any subset.
+// apply(): uv' = (uv - center) * scale + center + translate. `rotate` is parsed but NOT applied (callers log
+// PARTIAL when it is nonzero): Source's rotation direction and order are unverified.
+struct TextureTransform {
+  float centerU = 0.5f, centerV = 0.5f, scaleU = 1, scaleV = 1, rotate = 0, translateU = 0, translateV = 0;
+  void apply(float& u, float& v) const {
+    u = (u - centerU) * scaleU + centerU + translateU;
+    v = (v - centerV) * scaleV + centerV + translateV;
+  }
+};
+TextureTransform parseTextureTransform(std::string_view text);
+
 } // namespace anvil::materials

@@ -7,6 +7,7 @@
 #include "formats/vmt.h"
 #include "formats/vtf.h"
 #include "materials/texture.h"
+#include "world/sky.h"
 #include "world/worldmesh.h"
 
 #include <algorithm>
@@ -91,6 +92,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
     }
   }
   w->setupMaterials(mesh);
+  w->setupSky();
   w->faces_ = mesh.faces;
   w->visibility_ = std::make_unique<Visibility>(w->map_, w->faces_);
   ANVIL_INFO("world", "%s: %zu materials, %zu textures, %zu missing", path.c_str(), mesh.batches.size(),
@@ -104,6 +106,7 @@ World::~World() {
     for (const auto& [path, handle] : textures_) unique.insert(handle);
     for (render::TextureHandle h : unique) device_->destroyTexture(h);
     device_->destroyMesh(mesh_);
+    device_->destroyMesh(skyMesh_);
   }
   if (pak_) fs_.removeArchive(pak_);
 }
@@ -182,8 +185,55 @@ void World::setupMaterials(const Mesh& mesh) {
                         [](const Material& m) { return m.draw.blend != render::Blend::Translucent; });
 }
 
+void World::setupSky() {
+  std::string name;
+  for (const bsp::Entity& e : bsp::parseEntities(map_.entities))
+    if (iequals(e.get("classname"), "worldspawn")) name = lower(e.get("skyname"));
+  if (name.empty()) return;
+  // Maps name the HDR set ("sky_day01_01_hdr"); its materials carry the LDR $basetexture we draw. Fall back to
+  // the name without "_hdr" when the HDR materials are absent.
+  auto material = [&](const std::string& sky, const char* suffix) {
+    return fs_.readFile("materials/skybox/" + sky + suffix + ".vmt", "GAME");
+  };
+  if (!material(name, "rt") && name.ends_with("_hdr") && material(name.substr(0, name.size() - 4), "rt"))
+    name.resize(name.size() - 4);
+  skyName_ = name;
+  std::vector<render::Vertex3D> vertices;
+  std::vector<uint32_t> indices;
+  skyMesh(16.0f, vertices, indices); // any size past the near plane: drawn without depth, view has no translation
+  const vmt::IncludeFn include = [&](std::string_view p) { return fs_.readFile(p, "GAME"); };
+  for (uint32_t face = 0; face < 6; ++face) {
+    const std::string path = "materials/skybox/" + name + kSkySuffixes[face] + ".vmt";
+    std::string err = "not found";
+    const auto text = fs_.readFile(path, "GAME");
+    const auto m = text ? vmt::parse(*text, include, &err) : std::nullopt;
+    if (!m || !m->has("$basetexture")) {
+      ANVIL_WARN("world", "Sky material %s: %s", path.c_str(), m ? "no $basetexture" : err.c_str());
+      ++missing_;
+      continue;
+    }
+    const materials::TextureTransform t = materials::parseTextureTransform(m->get("$basetexturetransform"));
+    if (t.rotate != 0) ANVIL_WARN("world", "PARTIAL: %s: $basetexturetransform rotation ignored", path.c_str());
+    for (uint32_t v = face * 4; v < face * 4 + 4; ++v) t.apply(vertices[v].u, vertices[v].v);
+    render::Draw3D d;
+    d.texture = texture(m->get("$basetexture"));
+    d.firstIndex = face * 6;
+    d.indexCount = 6;
+    d.blend = render::Blend::Background;
+    skyDraws_.push_back(d);
+  }
+  if (device_ && !skyDraws_.empty()) skyMesh_ = device_->createMesh(vertices, indices);
+  ANVIL_INFO("world", "Sky %s: %zu of 6 faces (2D skybox only; sky_camera 3D skybox not rendered)", name.c_str(),
+             skyDraws_.size());
+}
+
 void World::draw(const Camera& camera, float aspect, bool usePvs) {
   const render::Mat4 viewProj = viewProjection(camera, aspect);
+  if (device_ && skyMesh_) { // behind everything: same view without translation
+    Camera skyCam = camera;
+    skyCam.origin = {};
+    device_->draw3d(skyMesh_, viewProjection(skyCam, aspect), skyDraws_);
+  }
   visibility_->compute(map_, faces_, camera.origin, viewProj, usePvs, visible_, stats_);
   // Visible faces of a material -> index ranges; neighbours in the index buffer merge into one draw.
   frameDraws_.clear();

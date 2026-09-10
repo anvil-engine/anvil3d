@@ -240,6 +240,17 @@ int main() {
     device->endFrame();
     px = device->readPixels();
     if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 16, 32, 0, 0, 0));
+    // Background (skybox): drawn first, no depth test or write, so farther scene geometry still covers it.
+    const MeshHandle mesh2 = device->createMesh(verts, idx);
+    Draw3D bg[2];
+    bg[0] = {baseTex, 0, 0, 6, 1.0f, Blend::Background}; // near quad (z = -2), left half
+    bg[1] = {blueTex, 0, 6, 6, 1.0f, Blend::Opaque};     // far quad (z = -4), whole view
+    CHECK(device->beginFrame(black));
+    device->draw3d(mesh2, viewProj, bg);
+    device->endFrame();
+    px = device->readPixels();
+    if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 16, 32, 0, 0, 255) && pixelNear(px, 48, 32, 0, 0, 255));
+    device->destroyMesh(mesh2);
     for (TextureHandle t : {baseTex, lightTex, holeTex, glassTex, blueTex}) device->destroyTexture(t);
   }
 

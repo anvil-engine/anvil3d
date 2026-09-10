@@ -190,6 +190,7 @@ private:
   VkPipeline pipeline2d_ = VK_NULL_HANDLE;
   VkPipeline pipelineOpaque_ = VK_NULL_HANDLE;      // Blend::Opaque and AlphaTest
   VkPipeline pipelineTranslucent_ = VK_NULL_HANDLE;
+  VkPipeline pipelineBackground_ = VK_NULL_HANDLE;
   VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
   std::vector<std::pair<uint32_t, VkSampler>> samplers_; // key: filter/address/mip bits, created on demand
   VkCommandPool uploadPool_ = VK_NULL_HANDLE;
@@ -684,11 +685,12 @@ bool VulkanDevice::createPipelines() {
   pipeline2d_ = createPipeline({kUiVert, kUiFrag, sizeof(Vertex2D), attrs2d, pipelineLayout_, false, false, true});
   pipelineOpaque_ = createPipeline({kWorldVert, kWorldFrag, sizeof(Vertex3D), attrs3d, pipelineLayout3d_, true, true, false});
   pipelineTranslucent_ = createPipeline({kWorldVert, kWorldFrag, sizeof(Vertex3D), attrs3d, pipelineLayout3d_, true, false, true});
-  return pipeline2d_ && pipelineOpaque_ && pipelineTranslucent_;
+  pipelineBackground_ = createPipeline({kWorldVert, kWorldFrag, sizeof(Vertex3D), attrs3d, pipelineLayout3d_, false, false, false});
+  return pipeline2d_ && pipelineOpaque_ && pipelineTranslucent_ && pipelineBackground_;
 }
 
 void VulkanDevice::destroyPipelines() {
-  for (VkPipeline* p : {&pipeline2d_, &pipelineOpaque_, &pipelineTranslucent_}) {
+  for (VkPipeline* p : {&pipeline2d_, &pipelineOpaque_, &pipelineTranslucent_, &pipelineBackground_}) {
     if (*p) vkDestroyPipeline(device_, *p, nullptr);
     *p = VK_NULL_HANDLE;
   }
@@ -1125,7 +1127,9 @@ void VulkanDevice::draw3d(MeshHandle mesh, const Mat4& viewProj, std::span<const
   VkPipeline bound = VK_NULL_HANDLE;
   for (const Draw3D& d : draws) {
     if (d.indexCount == 0 || uint64_t(d.firstIndex) + d.indexCount > m.indexCount) continue;
-    const VkPipeline p = d.blend == Blend::Translucent ? pipelineTranslucent_ : pipelineOpaque_;
+    const VkPipeline p = d.blend == Blend::Translucent  ? pipelineTranslucent_
+                         : d.blend == Blend::Background ? pipelineBackground_
+                                                        : pipelineOpaque_;
     if (p != bound) vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, bound = p);
     const VkDescriptorSet sets[2] = {texture(d.texture).set, texture(d.lightmap).set};
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout3d_, 0, 2, sets, 0, nullptr);

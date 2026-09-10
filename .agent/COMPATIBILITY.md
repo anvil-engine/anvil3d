@@ -13,7 +13,7 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 | BSP         | PARTIAL (parse; no brushes/areaportals/water/overlays/cubemaps) | NOT STARTED | NOT STARTED |
 | Materials   | PARTIAL     | NOT STARTED | NOT STARTED |
 | Textures    | PARTIAL (VTF->GPU; no frames/cubemaps/HDR) | NOT STARTED | NOT STARTED |
-| World render | PARTIAL (brush world, LightmappedGeneric-style, lightmaps, displacements; no sky/water/WVT blend/brush entities/props) | NOT STARTED | NOT STARTED |
+| World render | PARTIAL (brush world, LightmappedGeneric-style, lightmaps, displacements, PVS/frustum, 2D sky; no 3D sky/water/WVT blend/brush entities/props) | NOT STARTED | NOT STARTED |
 | Models      | PARTIAL     | NOT STARTED | NOT STARTED |
 | Physics     | NOT STARTED | NOT STARTED | NOT STARTED |
 | VGUI        | NOT STARTED | NOT STARTED | NOT STARTED |
@@ -28,3 +28,6 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 - Lightmap shading (gamma 2.2 encode, base * lightmap * 2): anvil approximation of LDR LightmappedGeneric, not pixel-verified.
 - RGBA16161616F textures: PARTIAL, downgraded to RGBA8 (WARN at load).
 - VTF ARGB8888/RGB565/BGRX5551/BGRA5551/BGRA4444: UNVERIFIED channel layouts (not in HL2).
+- Displacement grid orientation: derived from HL2 data (edge coincidence), not verified against Source output.
+- 2D skybox: face layout derived from HL2 data (texture seams, sun direction); not compared with Source screenshots. $basetexturetransform rotation ignored (PARTIAL, WARN). 3D skybox (sky_camera): NOT STARTED.
+- Shader behavior (LightmappedGeneric, UnlitGeneric, sky, fallbacks for other shaders): anvil interpretation, not verified against Source output.
