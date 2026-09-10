@@ -1,0 +1,15 @@
+// Synthetic game directory for the smoke test. Not Valve content.
+"GameInfo"
+{
+	game	"anvil test game"
+	type	singleplayer_only
+	FileSystem
+	{
+		SearchPaths
+		{
+			mod+mod_write+default_write_path	|gameinfo_path|.
+			game+game_write	testgame
+			game	|all_source_engine_paths|testgame
+		}
+	}
+}

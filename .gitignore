@@ -1,0 +1,32 @@
+# Build output
+/build*/
+/out/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdb
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+.DS_Store
+
+# Game content: never commit. Synthetic test data goes under tests/data/ with an explicit !rule.
+*.vpk
+*.bsp
+*.mdl
+*.vvd
+*.vtx
+*.phy
+*.vtf
+*.vmt
+*.wav
+*.mp3
+
+# Local tool state
+.token-optimizer/
