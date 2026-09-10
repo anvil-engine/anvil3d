@@ -11,7 +11,8 @@ class Module {
 public:
   using Proc = void (*)();
 
-  static std::unique_ptr<Module> load(const std::filesystem::path& path); // null + logged error on failure
+  // Null on failure; logged unless `quiet` (for probing candidate paths).
+  static std::unique_ptr<Module> load(const std::filesystem::path& path, bool quiet = false);
   ~Module();
   Module(const Module&) = delete;
   Module& operator=(const Module&) = delete;

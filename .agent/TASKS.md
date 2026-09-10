@@ -7,7 +7,7 @@
 - [ ] licenses/ with SDL3 (zlib) and Dear ImGui (MIT) texts.
 
 ## Later (devui)
-- [ ] devui draw via renderer 2D path (M3); platform event hook for devui input; panels: mounts/VPKs, cvars, console, interfaces, modules.
+- [ ] platform event hook for devui input; panels: mounts/VPKs, cvars, console, interfaces, modules.
 
 ## M2 (in order)
 1. [x] VPK v1/v2 directory parser (tree, archive index, preload bytes, `_dir` + `_NNN` parts) + synthetic test.
@@ -20,9 +20,9 @@
 8. [x] BSP: nodes/leafs/visibility, displacements, game lump (static props), pakfile (zip) lump.
 
 ## M3 (in order)
-1. [ ] render::2d + render device API (textures, buffers, shaders, capabilities); first backend.
-2. [ ] VTF decode/upload (DXT1/3/5, BGR(A)888x, RGBA16F, UV88); material -> texture binding.
+1. [x] render::2d + render::Device API; Vulkan backend (swapchain + headless offscreen); RGBA8 textures.
+2. [ ] VTF -> anvil texture (CPU, format + mips) -> render::Texture: BC1-3 direct upload when caps.textureCompressionBC, CPU decode otherwise; mips; decode (DXT1/3/5, BGR(A)888x, RGBA16F, UV88); material -> texture binding.
 3. [ ] World mesh builder: faces -> polygons, displacement grids, lightmap atlas; LightmappedGeneric/WorldVertexTransition basics.
 4. [ ] Static props via studio loader; skybox (sky shader, 2D skybox camera later).
 5. [ ] PVS/frustum culling; `map <name>` command mounts pakfile, loads BSP, renders.
-6. [ ] devui draws through render::2d.
+6. [x] devui draws through render::2d.

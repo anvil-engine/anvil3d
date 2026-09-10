@@ -1,7 +1,7 @@
 # Status
 
 Version: 0.10.0 (dev)
-Milestone: M2 Asset Foundation — DONE (Windows unverified). Next: M3 Renderer.
+Milestone: M3 Renderer — in progress. render::Device + render::2d + Vulkan backend done; next VTF textures, world mesh.
 
 ## Working
 - Build verified: macOS arm64 (AppleClang 21), Linux arm64 (Ubuntu 25.04, GCC 14, via podman). Windows unverified.
@@ -17,7 +17,9 @@ Milestone: M2 Asset Foundation — DONE (Windows unverified). Next: M3 Renderer.
 - formats/vtf: VTF 7.0-7.5 header, resources, cubemap faces, per mip/frame/face/slice image lookup, exact size validation. 5237/5237 HL2 textures parse (`vtf_hl2`). No pixel decoding yet.
 - formats/vmt: resolved material (shader, flat params, proxies) for dxlevel 95 + HDR; patch includes. 5304 HL2 materials resolve (`vmt_hl2`; 1 retail-broken dx60 file skipped).
 - formats/studio: MDL v44-48 + VVD v4 (fixups) + VTX v7 (trilists/tristrips) -> LOD0 default body; checksums cross-checked. 2171/2171 HL2 models load (`studio_hl2`). No skeleton/anim/flex/bodygroups yet.
-- devui/: optional Dear ImGui overlay (`-DANVIL_DEVUI=ON`, run with `-devui`); frames built headless, not displayed (no renderer).
+- devui/: optional Dear ImGui overlay (`-DANVIL_DEVUI=ON`, run with `-devui`), drawn via render::2d; ImGui textures via RendererHasTextures.
+- render/: backend-neutral Device (textures, frames, draw2d, caps, headless readPixels). render/vulkan: MoltenVK/native via volk, portability enumeration/subset, swapchain resize/out-of-date, deferred destruction, 2D pipeline. Verified: Apple M4 (MoltenVK, Vulkan 1.1.323) windowed + headless; llvmpipe (Linux) headless under Khronos validation: no messages.
+- engine: renders every frame (clear + devui); flags -norender, -novsync, -vkdebug.
 - Tests: cmdline, keyvalues, filesystem, console(+clock), interfaces (real module load), smoke (tests/data/testgame).
 
 ## Stubbed / not implemented

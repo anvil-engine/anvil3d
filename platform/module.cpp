@@ -8,13 +8,13 @@
 
 namespace anvil::platform {
 
-std::unique_ptr<Module> Module::load(const std::filesystem::path& path) {
+std::unique_ptr<Module> Module::load(const std::filesystem::path& path, bool quiet) {
   // SDL expects UTF-8 on every platform (LoadLibraryW underneath on Windows).
   const std::u8string utf8 = path.u8string();
   const char* name = reinterpret_cast<const char*>(utf8.c_str());
   SDL_SharedObject* handle = SDL_LoadObject(name);
   if (!handle) {
-    ANVIL_ERROR("platform", "Failed to load module %s: %s", name, SDL_GetError());
+    if (!quiet) ANVIL_ERROR("platform", "Failed to load module %s: %s", name, SDL_GetError());
     return nullptr;
   }
   ANVIL_DEBUG("platform", "Loaded module %s", name);

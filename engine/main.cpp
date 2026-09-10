@@ -3,6 +3,7 @@
 #include "engine/clock.h"
 #include "engine/console.h"
 #include "devui/devui.h"
+#include "render/render.h"
 #include "filesystem/filesystem.h"
 #include "filesystem/gameinfo.h"
 #include "platform/window.h"
@@ -77,10 +78,23 @@ int main(int argc, char** argv) {
   desc.width = cmdline.intValue("-w", desc.width);
   desc.height = cmdline.intValue("-h", desc.height);
   desc.fullscreen = cmdline.has("-full") && !cmdline.has("-windowed");
+  // -norender: window + simulation only (headless CI, debugging without a GPU).
+  desc.vulkan = !cmdline.has("-norender") && platform::vulkanGetInstanceProcAddr();
   const auto window = platform::Window::create(desc);
   if (!window) return 1;
-  // -devui: developer overlay (no-op unless built with ANVIL_DEVUI; not drawn until the renderer exists).
-  const bool devuiOn = cmdline.has("-devui") && devui::init();
+
+  std::unique_ptr<render::Device> device;
+  if (desc.vulkan) {
+    render::DeviceOptions options;
+    options.window = window.get();
+    options.vsync = !cmdline.has("-novsync");
+    options.debug = cmdline.has("-vkdebug");
+    device = render::createDevice(options);
+  }
+  if (!device) ANVIL_WARN("engine", "Running without a renderer");
+
+  // -devui: developer overlay (no-op unless built with ANVIL_DEVUI), drawn through render::2d.
+  const bool devuiOn = cmdline.has("-devui") && devui::init(device.get());
 
   // -frames N: quit after N frames. Used by the smoke test and headless diagnostics.
   using SteadyClock = std::chrono::steady_clock;
@@ -91,11 +105,19 @@ int main(int argc, char** argv) {
     const double dt = std::chrono::duration<double>(frameStart - last).count();
     clock.advance(dt); // ticks unused until a server exists
     last = frameStart;
-    if (devuiOn) devui::frame(float(desc.width), float(desc.height), float(dt));
+    const float clear[4] = {0.08f, 0.08f, 0.1f, 1.0f};
+    if (device && device->beginFrame(clear)) {
+      uint32_t lw = 0, lh = 0, pw = 0, ph = 0;
+      window->logicalSize(lw, lh);
+      device->targetSize(pw, ph);
+      if (devuiOn && lw) devui::frame(float(lw), float(lh), float(pw) / float(lw), float(dt));
+      device->endFrame();
+    }
     if (fpsMax.asFloat() > 0) std::this_thread::sleep_until(frameStart + std::chrono::duration<double>(1.0 / fpsMax.asFloat()));
   }
 
   devui::shutdown();
+  device.reset(); // before the window: the surface belongs to it
   ANVIL_INFO("engine", "Shutdown");
   return 0;
 }

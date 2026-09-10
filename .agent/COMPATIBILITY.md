@@ -19,3 +19,7 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 | Server DLL  | NOT STARTED | NOT STARTED | NOT STARTED |
 | Audio       | NOT STARTED | NOT STARTED | NOT STARTED |
 | Networking  | NOT STARTED | NOT STARTED | NOT STARTED |
+
+## Behavior notes
+- Archive entry found but unreadable -> lookup stops: anvil policy, Source behavior UNKNOWN.
+- BSP pakfile at search-path head, IDs GAME+BSP: matches Source SDK 2013 (external review).

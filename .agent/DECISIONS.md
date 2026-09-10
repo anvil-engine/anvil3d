@@ -79,3 +79,31 @@ IMPACT: devui/devui.h exposes no ImGui types; OFF build compiles no-op stubs and
 DECISION: One shared low-level 2D path: DevUI -> render::2d -> backend; VGUI -> render::2d -> backend; 3D -> backend. (Confirmed by external review.)
 REASON: No per-backend imgui_impl_* code, no renderer logic that exists only for ImGui; VGUI ISurface and devui share primitives.
 IMPACT: M3 render::2d minimal API: textured triangles, vertex/index data, alpha blending, scissor/clip rects, texture handles, viewport, batching. No ISurface overbuild in M3. VGUI is never an ImGui wrapper. Until M3 the overlay is built CPU-side but not drawn; devui input needs a platform event hook.
+
+DECISION: First render backend = Vulkan (render/vulkan), one path for Windows, Linux and macOS (MoltenVK as the Apple Vulkan implementation). D3D11 and GLES later; M3 does not wait for them.
+REASON: Architect decision (M3). One backend covers every dev/test host.
+IMPACT: Instance enables VK_KHR_portability_enumeration (+ ENUMERATE_PORTABILITY flag) when offered; device enables VK_KHR_portability_subset when offered. No macOS-specific renderer.
+
+DECISION: Vulkan is loaded at runtime (no link-time loader): platform finds the library (loader or MoltenVK), SDL3 uses the same file for window surfaces, volk loads entry points from its vkGetInstanceProcAddr. Headers via FetchContent (Vulkan-Headers), volk via FetchContent; GLSL -> SPIR-V at build time with glslangValidator (system, else FetchContent glslang).
+REASON: Builds without a Vulkan SDK install; the binary starts (and can fall back to no renderer) on machines without Vulkan.
+IMPACT: Apple search list includes Homebrew prefixes for libvulkan/libMoltenVK; SDL_VULKAN_LIBRARY env overrides.
+
+DECISION: Texture pipeline: VTF (formats/vtf) -> anvil texture representation (CPU, format + mips) -> render::Texture handle -> backend resource. VTF code never sees a backend.
+REASON: Architect decision; keeps GLES/D3D11 backends possible and parsers testable.
+IMPACT: render::Device takes backend-neutral texture descriptions only.
+
+DECISION: BSP pakfile mounts at search-path head with path IDs {GAME, BSP}. Confirmed Source SDK 2013 behavior (external review).
+REASON: Map-embedded content must override mod content.
+IMPACT: Engine map load: addArchive(pak, ..., front=true); removeArchive on map change.
+
+DECISION: "Entry found in an archive but unreadable -> lookup stops (no fall-through)" is an ANVIL POLICY, not verified Source behavior.
+REASON: Avoids silently serving a different copy of a corrupt file. Source's exact fallback semantics are unverified.
+IMPACT: Covered by test_vpk (`unreadable entry does not fall through`). Revisit when Source behavior is verified (COMPATIBILITY.md: UNKNOWN).
+
+DECISION: platform caches the loaded Vulkan library for the process (function-local static in platform/window.cpp).
+REASON: SDL's surface code and the renderer must resolve entry points from the same library; SDL itself keeps this global.
+IMPACT: Another process-lifetime global, confined to platform/. Not a pattern for engine subsystems.
+
+DECISION: Swapchain/offscreen color format is UNORM (B8G8R8A8 or R8G8B8A8), not sRGB.
+REASON: Source-era 2D/VGUI colors are gamma-space values blended in gamma space; an sRGB target would double-apply gamma.
+IMPACT: World shaders must output gamma-space color (or render to a linear HDR target and tonemap later).

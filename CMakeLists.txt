@@ -1,17 +1,19 @@
 cmake_minimum_required(VERSION 3.20)
-project(anvil3d VERSION 0.10.0 LANGUAGES CXX)
+project(anvil3d VERSION 0.10.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+option(ANVIL_DEVUI "Build the Dear ImGui developer UI" OFF)
+option(ANVIL_VULKAN "Build the Vulkan renderer" ON)
+include(cmake/dependencies.cmake)
 
 if(MSVC)
   add_compile_options(/W4 /permissive- /utf-8)
 else()
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
-
-find_package(SDL3 REQUIRED CONFIG)
 
 add_library(anvil_common STATIC common/log.cpp common/cmdline.cpp common/keyvalues.cpp)
 target_include_directories(anvil_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -27,40 +29,45 @@ target_link_libraries(anvil_filesystem PUBLIC anvil_common)
 add_library(anvil_formats STATIC formats/bsp.cpp formats/vtf.cpp formats/vmt.cpp formats/studio.cpp)
 target_link_libraries(anvil_formats PUBLIC anvil_common)
 
+# Renderer: backend-neutral API (render/) + backends (render/<backend>/). Backend headers stay in backends.
+add_library(anvil_render STATIC render/render.cpp)
+target_link_libraries(anvil_render PUBLIC anvil_common PRIVATE anvil_platform)
+if(ANVIL_VULKAN)
+  target_sources(anvil_render PRIVATE render/vulkan/device.cpp)
+  # `VkFooCreateInfo ci{VK_STRUCTURE_TYPE_...}` value-initializes the rest: the idiomatic, correct form.
+  if(NOT MSVC)
+    set_source_files_properties(render/vulkan/device.cpp PROPERTIES COMPILE_OPTIONS -Wno-missing-field-initializers)
+  endif()
+  target_link_libraries(anvil_render PRIVATE volk)
+  target_compile_definitions(anvil_render PRIVATE ANVIL_VULKAN=1)
+  anvil_add_shader(anvil_render render/vulkan/shaders/ui.vert kUiVert)
+  anvil_add_shader(anvil_render render/vulkan/shaders/ui.frag kUiFrag)
+endif()
+
 # Developer UI (Dear ImGui). Internal tooling only, never the game's VGUI. OFF = no dependency, no-op API.
-option(ANVIL_DEVUI "Build the Dear ImGui developer UI" OFF)
 add_library(anvil_devui STATIC devui/devui.cpp)
-target_link_libraries(anvil_devui PUBLIC anvil_common)
+target_link_libraries(anvil_devui PUBLIC anvil_common anvil_render)
 if(ANVIL_DEVUI)
-  include(FetchContent)
-  FetchContent_Declare(imgui
-    URL https://github.com/ocornut/imgui/archive/refs/tags/v1.92.9b.tar.gz
-    URL_HASH SHA256=21d8a0a565e85dce943e375db00812c2f3f0ab21f3f0f7964e364a63422d7f99
-    DOWNLOAD_EXTRACT_TIMESTAMP ON)
-  FetchContent_MakeAvailable(imgui)
-  add_library(imgui STATIC ${imgui_SOURCE_DIR}/imgui.cpp ${imgui_SOURCE_DIR}/imgui_draw.cpp
-                           ${imgui_SOURCE_DIR}/imgui_tables.cpp ${imgui_SOURCE_DIR}/imgui_widgets.cpp)
-  target_include_directories(imgui SYSTEM PUBLIC ${imgui_SOURCE_DIR})
-  set_property(TARGET imgui PROPERTY COMPILE_OPTIONS "") # third-party: not held to our warning flags
   target_link_libraries(anvil_devui PRIVATE imgui)
   target_compile_definitions(anvil_devui PRIVATE ANVIL_DEVUI=1)
 endif()
 
 add_library(anvil_engine STATIC engine/console.cpp compat/interfaces.cpp)
-target_link_libraries(anvil_engine PUBLIC anvil_platform anvil_filesystem anvil_formats anvil_devui)
+target_link_libraries(anvil_engine PUBLIC anvil_platform anvil_filesystem anvil_formats anvil_render anvil_devui)
 
 add_executable(anvil engine/main.cpp)
 target_link_libraries(anvil PRIVATE anvil_engine)
 target_compile_definitions(anvil PRIVATE ANVIL_VERSION="${PROJECT_VERSION}")
 
 enable_testing()
-foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio console devui interfaces)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio console devui render interfaces)
   add_executable(test_${name} tests/test_${name}.cpp)
   target_link_libraries(test_${name} PRIVATE anvil_engine)
 endforeach()
-foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio console devui)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio console devui render)
   add_test(NAME ${name} COMMAND test_${name})
 endforeach()
+set_tests_properties(render PROPERTIES SKIP_RETURN_CODE 77) # no Vulkan implementation on this host
 
 # Opt-in: -DANVIL_HL2_DIR=<Half-Life 2 install> reads every VPK entry of a real install (not shipped).
 if(ANVIL_HL2_DIR)
@@ -80,5 +87,5 @@ set_target_properties(test_module_lib PROPERTIES CXX_VISIBILITY_PRESET hidden)
 add_dependencies(test_interfaces test_module_lib)
 add_test(NAME interfaces COMMAND test_interfaces $<TARGET_FILE:test_module_lib>)
 
-add_test(NAME smoke COMMAND anvil -basedir ${CMAKE_CURRENT_SOURCE_DIR}/tests/data -game testgame -frames 3 +exec smoke)
+add_test(NAME smoke COMMAND anvil -basedir ${CMAKE_CURRENT_SOURCE_DIR}/tests/data -game testgame -frames 3 -norender +exec smoke)
 set_tests_properties(smoke PROPERTIES ENVIRONMENT SDL_VIDEO_DRIVER=dummy PASS_REGULAR_EXPRESSION "smoke.cfg executed")

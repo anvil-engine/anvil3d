@@ -118,6 +118,7 @@ int main(int argc, char** argv) {
   writeFile(root / "game/pak01_001.vpk", "tiny");
   writeFile(root / "game/materials/test/brick.vmt", "loose copy");
   writeFile(root / "game/materials/test/loose_only.vmt", "loose");
+  writeFile(root / "game/bad/range.txt", "lower-priority copy");
 
   std::string err;
   auto vpk = VpkArchive::open(root / "game/pak01_dir.vpk", &err);
@@ -145,7 +146,9 @@ int main(int argc, char** argv) {
     CHECK(fsys.readFile("materials/test/brick.vmt") == "\"LightmappedGeneric\" {}");
     CHECK(fsys.readFile("materials\\Test\\loose_only.vmt") == "loose");
     CHECK(fsys.exists("readme.txt"));
-    CHECK(!fsys.readFile("bad/range.txt")); // unreadable entry does not fall through to other paths
+    // ANVIL POLICY (Source behavior unverified, see DECISIONS.md): an archive entry that exists but cannot be
+    // read stops the lookup; the lower-priority loose copy is NOT served.
+    CHECK(!fsys.readFile("bad/range.txt"));
   }
 
   // Malformed archives: every truncation fails cleanly.
