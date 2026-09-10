@@ -1,5 +1,7 @@
 #pragma once
 
+#include "filesystem/archive.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -15,7 +17,7 @@ namespace anvil {
 // Layout: "<name>_dir.vpk" holds the header, the directory tree and per-file preload bytes;
 // bulk data lives in "<name>_NNN.vpk" parts, or after the tree in the _dir file (archive index 0x7FFF).
 // Only the tree stays in memory; file data is read from disk on demand.
-class VpkArchive {
+class VpkArchive final : public Archive {
 public:
   // Opens "<name>_dir.vpk" (or a single-file "<name>.vpk"). Null + error on malformed input.
   static std::unique_ptr<VpkArchive> open(const std::filesystem::path& dirFile, std::string* error = nullptr);
@@ -24,13 +26,13 @@ public:
                                            std::string* error = nullptr);
 
   // `path` must be a normalized virtual path (see normalizePath); lookup is case-insensitive.
-  bool contains(std::string_view path) const;
+  bool contains(std::string_view path) const override;
   // Preload bytes + archive bytes. Null (logged) on I/O error; CRC mismatch only warns.
   // Const and self-contained per call, so safe to call from several threads.
-  std::optional<std::string> read(std::string_view path) const;
+  std::optional<std::string> read(std::string_view path) const override;
 
   size_t fileCount() const { return entries_.size(); }
-  std::vector<std::string> files() const; // lowercase paths, unordered
+  std::vector<std::string> files() const override;
   const std::filesystem::path& dirFile() const { return dirFile_; }
 
 private:

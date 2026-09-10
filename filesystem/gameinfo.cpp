@@ -3,6 +3,7 @@
 #include "common/keyvalues.h"
 #include "common/log.h"
 #include "common/strutil.h"
+#include "filesystem/vpk.h"
 
 #include <algorithm>
 #include <regex>
@@ -88,7 +89,7 @@ int mountGameInfo(FileSystem& fsys, const GameInfo& info) {
         return;
       }
       ANVIL_DEBUG("fs", "Mounted %s (%zu files)", file.string().c_str(), vpk->fileCount());
-      fsys.addVpk(std::move(vpk), ids);
+      fsys.addArchive(std::move(vpk), file, ids);
     } else if (fs::is_directory(dir, ec)) {
       fsys.addSearchPath(dir, ids);
       ANVIL_DEBUG("fs", "Mounted %s", dir.string().c_str());

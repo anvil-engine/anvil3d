@@ -1,6 +1,6 @@
 #pragma once
 
-#include "filesystem/vpk.h"
+#include "filesystem/archive.h"
 
 #include <filesystem>
 #include <memory>
@@ -16,20 +16,23 @@ namespace anvil {
 // game data and game code are untrusted and must not reach outside mounted directories.
 std::optional<std::string> normalizePath(std::string_view path);
 
-// Ordered search paths (directories or VPKs) tagged with Source path IDs ("GAME", "MOD", "PLATFORM", ...).
+// Ordered search paths (directories or archives: VPK, BSP pakfile) tagged with Source path IDs ("GAME", "MOD", "PLATFORM", ...).
 // Lookup walks paths in order; an empty pathId matches every path. IDs are case-insensitive.
 class FileSystem {
 public:
   void addSearchPath(std::filesystem::path dir, std::vector<std::string> pathIds, bool front = false);
-  void addVpk(std::unique_ptr<VpkArchive> vpk, std::vector<std::string> pathIds, bool front = false);
+  // `label` names the archive in listings/logs (its file path). Returns a handle for removeArchive().
+  const Archive* addArchive(std::unique_ptr<Archive> archive, std::filesystem::path label,
+                            std::vector<std::string> pathIds, bool front = false);
+  void removeArchive(const Archive* archive); // e.g. the previous map's pakfile on map change
 
   bool exists(std::string_view path, std::string_view pathId = {}) const;
   std::optional<std::string> readFile(std::string_view path, std::string_view pathId = {}) const;
 
   struct SearchPath {
-    std::filesystem::path root;       // directory, or the VPK's _dir file
+    std::filesystem::path root;        // directory, or the archive's label
     std::vector<std::string> ids;
-    std::unique_ptr<VpkArchive> vpk;  // null for directories
+    std::unique_ptr<Archive> archive;  // null for directories
   };
   const std::vector<SearchPath>& searchPaths() const { return paths_; }
 

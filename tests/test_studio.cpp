@@ -127,7 +127,7 @@ int main(int argc, char** argv) {
       if (!vpk) continue;
       for (std::string& p : vpk->files())
         if (p.size() > 4 && p.compare(p.size() - 4, 4, ".mdl") == 0) mdls.push_back(std::move(p));
-      fsys.addVpk(std::move(vpk), {"GAME"});
+      fsys.addArchive(std::move(vpk), argv[i], {"GAME"});
     }
     size_t loaded = 0, noMesh = 0, tris = 0;
     for (const std::string& path : mdls) {

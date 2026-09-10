@@ -108,14 +108,15 @@ bool validate(const Map& m, std::string& error) {
 std::optional<Map> load(std::string_view file, std::string* error) {
   Map map;
   Parser p(file);
-  std::string_view entities, lighting, strings;
+  std::string_view entities, lighting, strings, pakfile;
   std::vector<int32_t> stringTable;
   bool ok = p.header(map) && p.raw(LUMP_ENTITIES, entities) && p.array(LUMP_PLANES, map.planes) &&
             p.array(LUMP_VERTEXES, map.vertices) && p.array(LUMP_EDGES, map.edges) &&
             p.array(LUMP_SURFEDGES, map.surfedges) && p.array(LUMP_TEXINFO, map.texinfos) &&
             p.array(LUMP_TEXDATA, map.texdatas) && p.array(LUMP_FACES, map.faces) &&
             p.array(LUMP_MODELS, map.models) && p.raw(LUMP_LIGHTING, lighting) &&
-            p.raw(LUMP_TEXDATA_STRING_DATA, strings) && p.array(LUMP_TEXDATA_STRING_TABLE, stringTable);
+            p.raw(LUMP_TEXDATA_STRING_DATA, strings) && p.array(LUMP_TEXDATA_STRING_TABLE, stringTable) &&
+            p.raw(LUMP_PAKFILE, pakfile);
   // HDR-only maps leave the LDR sets empty.
   if (ok && map.faces.empty()) ok = p.array(LUMP_FACES_HDR, map.faces);
   if (ok && lighting.empty()) ok = p.raw(LUMP_LIGHTING_HDR, lighting);
@@ -123,6 +124,7 @@ std::optional<Map> load(std::string_view file, std::string* error) {
   if (ok) {
     map.entities.assign(entities.substr(0, entities.find('\0')));
     map.lighting.assign(lighting);
+    map.pakfile.assign(pakfile);
     for (int32_t off : stringTable) {
       const size_t end = off >= 0 ? strings.find('\0', size_t(off)) : std::string_view::npos;
       if (end == std::string_view::npos) {

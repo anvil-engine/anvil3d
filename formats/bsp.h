@@ -82,6 +82,7 @@ struct Map {
   std::vector<Face> faces;               // LDR faces, or HDR faces when the map has no LDR set
   std::vector<Model> models;             // [0] = world, rest = brush entities ("*1", "*2", ...)
   std::string lighting;                  // raw lightmap samples (LDR, else HDR)
+  std::string pakfile;                   // embedded ZIP (map materials, cubemaps); mount via ZipArchive
 };
 
 enum Lump {
@@ -95,6 +96,7 @@ enum Lump {
   LUMP_EDGES = 12,
   LUMP_SURFEDGES = 13,
   LUMP_MODELS = 14,
+  LUMP_PAKFILE = 40,
   LUMP_LIGHTING_HDR = 53,
   LUMP_FACES_HDR = 58,
   LUMP_TEXDATA_STRING_DATA = 43,

@@ -79,9 +79,18 @@ void FileSystem::addSearchPath(fs::path dir, std::vector<std::string> pathIds, b
   paths_.insert(front ? paths_.begin() : paths_.end(), std::move(sp));
 }
 
-void FileSystem::addVpk(std::unique_ptr<VpkArchive> vpk, std::vector<std::string> pathIds, bool front) {
-  SearchPath sp{vpk->dirFile(), std::move(pathIds), std::move(vpk)};
+const Archive* FileSystem::addArchive(std::unique_ptr<Archive> archive, fs::path label,
+                                      std::vector<std::string> pathIds, bool front) {
+  const Archive* handle = archive.get();
+  SearchPath sp{std::move(label), std::move(pathIds), std::move(archive)};
   paths_.insert(front ? paths_.begin() : paths_.end(), std::move(sp));
+  return handle;
+}
+
+void FileSystem::removeArchive(const Archive* archive) {
+  paths_.erase(std::remove_if(paths_.begin(), paths_.end(),
+                              [&](const SearchPath& sp) { return archive && sp.archive.get() == archive; }),
+               paths_.end());
 }
 
 bool FileSystem::exists(std::string_view path, std::string_view pathId) const {
@@ -89,7 +98,7 @@ bool FileSystem::exists(std::string_view path, std::string_view pathId) const {
   if (!rel || rel->empty()) return false;
   for (const SearchPath& sp : paths_) {
     if (!hasId(sp, pathId)) continue;
-    if (sp.vpk ? sp.vpk->contains(*rel) : findInRoot(sp.root, *rel).has_value()) return true;
+    if (sp.archive ? sp.archive->contains(*rel) : findInRoot(sp.root, *rel).has_value()) return true;
   }
   return false;
 }
@@ -99,9 +108,9 @@ std::optional<std::string> FileSystem::readFile(std::string_view path, std::stri
   if (!rel || rel->empty()) return std::nullopt;
   for (const SearchPath& sp : paths_) {
     if (!hasId(sp, pathId)) continue;
-    if (sp.vpk) {
-      // A corrupt entry must not fall through to a lower-priority copy silently; read() already logged it.
-      if (sp.vpk->contains(*rel)) return sp.vpk->read(*rel);
+    if (sp.archive) {
+      // An unreadable entry must not fall through to a lower-priority copy silently; read() already logged it.
+      if (sp.archive->contains(*rel)) return sp.archive->read(*rel);
     } else if (auto os = findInRoot(sp.root, *rel)) {
       return readOsFile(*os);
     }

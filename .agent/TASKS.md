@@ -3,6 +3,9 @@
 ## M1 leftovers
 - [ ] Verify build on Windows (MSVC 2022, vcpkg SDL3).
 
+## Before first binary release
+- [ ] licenses/ with SDL3 (zlib) and Dear ImGui (MIT) texts.
+
 ## Later (devui)
 - [ ] devui draw via renderer 2D path (M3); platform event hook for devui input; panels: mounts/VPKs, cvars, console, interfaces, modules.
 

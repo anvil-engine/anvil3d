@@ -20,7 +20,7 @@ target_include_directories(anvil_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 add_library(anvil_platform STATIC platform/window.cpp platform/module.cpp)
 target_link_libraries(anvil_platform PUBLIC anvil_common PRIVATE SDL3::SDL3)
 
-add_library(anvil_filesystem STATIC filesystem/filesystem.cpp filesystem/gameinfo.cpp filesystem/vpk.cpp)
+add_library(anvil_filesystem STATIC filesystem/filesystem.cpp filesystem/gameinfo.cpp filesystem/vpk.cpp filesystem/zip.cpp)
 target_link_libraries(anvil_filesystem PUBLIC anvil_common)
 
 # Format parsers: pure functions over bytes, no I/O, no engine state.
@@ -54,11 +54,11 @@ target_link_libraries(anvil PRIVATE anvil_engine)
 target_compile_definitions(anvil PRIVATE ANVIL_VERSION="${PROJECT_VERSION}")
 
 enable_testing()
-foreach(name cmdline keyvalues filesystem vpk bsp vtf vmt studio console devui interfaces)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio console devui interfaces)
   add_executable(test_${name} tests/test_${name}.cpp)
   target_link_libraries(test_${name} PRIVATE anvil_engine)
 endforeach()
-foreach(name cmdline keyvalues filesystem vpk bsp vtf vmt studio console devui)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio console devui)
   add_test(NAME ${name} COMMAND test_${name})
 endforeach()
 
@@ -69,7 +69,7 @@ if(ANVIL_HL2_DIR)
   file(GLOB ANVIL_HL2_MAPS "${ANVIL_HL2_DIR}/hl2/maps/*.bsp")
   add_test(NAME bsp_hl2 COMMAND test_bsp ${ANVIL_HL2_MAPS})
   add_test(NAME vtf_hl2 COMMAND test_vtf ${ANVIL_HL2_VPKS})
-  add_test(NAME vmt_hl2 COMMAND test_vmt ${ANVIL_HL2_VPKS})
+  add_test(NAME vmt_hl2 COMMAND test_vmt ${ANVIL_HL2_VPKS} ${ANVIL_HL2_MAPS})
   add_test(NAME studio_hl2 COMMAND test_studio ${ANVIL_HL2_VPKS})
 endif()
 

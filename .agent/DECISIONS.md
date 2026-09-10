@@ -74,8 +74,8 @@ IMPACT: If a game relies on replace skipping absent keys, split the two.
 
 DECISION: Dear ImGui is the internal developer UI (anvil::devui), separate from Source-compatible VGUI. Optional: `-DANVIL_DEVUI=ON` (default OFF) + runtime `-devui`.
 REASON: Dev tooling must not shape the VGUI compatibility surface or become a core runtime dependency.
-IMPACT: devui/devui.h exposes no ImGui types; OFF build compiles no-op stubs and fetches nothing. ImGui context is a process global inside devui.cpp (third global after logging and interface registry).
+IMPACT: devui/devui.h exposes no ImGui types; OFF build compiles no-op stubs and fetches nothing. ImGui context is a process global private to devui.cpp (accepted exception; not a pattern for other subsystems). FetchContent + pinned URL/SHA256 kept; no vendoring until offline builds are required.
 
-DECISION: devui renders through the renderer's generic 2D path (textured triangles + scissor), the same path VGUI ISurface will use. No imgui_impl_{vulkan,dx11,opengl3} backends; SDL3 input backend only when input routing exists.
-REASON: Avoids per-backend ImGui code and renderer logic that exists only for ImGui; one 2D primitive API serves VGUI and devui.
-IMPACT: Until M3 the overlay is built CPU-side each frame but not drawn. Input to devui needs a platform event hook (not yet present).
+DECISION: One shared low-level 2D path: DevUI -> render::2d -> backend; VGUI -> render::2d -> backend; 3D -> backend. (Confirmed by external review.)
+REASON: No per-backend imgui_impl_* code, no renderer logic that exists only for ImGui; VGUI ISurface and devui share primitives.
+IMPACT: M3 render::2d minimal API: textured triangles, vertex/index data, alpha blending, scissor/clip rects, texture handles, viewport, batching. No ISurface overbuild in M3. VGUI is never an ImGui wrapper. Until M3 the overlay is built CPU-side but not drawn; devui input needs a platform event hook.
