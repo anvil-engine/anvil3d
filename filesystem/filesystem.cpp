@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <fstream>
-#include <iterator>
 
 namespace fs = std::filesystem;
 
@@ -113,10 +112,12 @@ std::optional<std::string> FileSystem::readFile(std::string_view path, std::stri
 std::optional<std::string> readOsFile(const fs::path& path) {
   std::error_code ec;
   if (!fs::is_regular_file(path, ec)) return std::nullopt;
+  const uint64_t size = fs::file_size(path, ec);
   std::ifstream in(path, std::ios::binary);
-  if (!in) return std::nullopt;
-  std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-  if (in.bad()) return std::nullopt;
+  if (ec || !in) return std::nullopt;
+  std::string data(size, '\0');
+  in.read(data.data(), static_cast<std::streamsize>(size));
+  if (in.gcount() != static_cast<std::streamsize>(size)) return std::nullopt;
   return data;
 }
 

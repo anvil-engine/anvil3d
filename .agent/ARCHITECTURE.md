@@ -11,12 +11,13 @@ Source game DLLs (client/server)
 - common/   logging, cmdline, small utils. No deps.
 - platform/ OS + window + input + dynamic modules. Only place SDL is included.
 - filesystem/ virtual FS, search paths, gameinfo.txt. OS paths stop here.
+- formats/  pure parsers over bytes (bsp; later vtf, vmt, mdl). No I/O. Validate all cross-refs at load.
 - compat/   Source-facing ABI: interface registry, CreateInterface. Later: engine interfaces for game DLLs.
 - engine/   entry point, console/cvars, clock, main loop.
 - tests/    unit tests (synthetic data only), tests/data/testgame (smoke test game dir).
 
-Libraries: anvil_common <- anvil_platform, anvil_filesystem <- anvil_engine <- anvil (exe), tests.
-Planned: formats/ (vpk, bsp, vtf, vmt, mdl), renderer/{common,vulkan,d3d11,gles}/, audio/, physics/, vgui/.
+Libraries: anvil_common <- anvil_platform, anvil_filesystem, anvil_formats <- anvil_engine <- anvil (exe), tests.
+Planned: renderer/{common,vulkan,d3d11,gles}/, audio/, physics/, vgui/.
 
 ## Rules
 - Parsers own raw formats; renderer never reads raw BSP/VTF.

@@ -5,6 +5,7 @@ None for M1–M3.
 ## Local test install (dev Mac)
 - `~/Library/Application Support/Steam/steamapps/common/Half-Life 2`, buildid 19307283. Use via `-basedir`.
 - Assets usable: hl2/*.vpk, hl2/gameinfo.txt, maps, platform/.
+- Install has damage: hl2/maps/d2_coast_02.bsp is 0 bytes; one VPK CRC mismatch (see DECISIONS). User should run Steam "Verify integrity".
 - ALL mac binaries are i386 Mach-O (hl2_osx, bin/*.dylib, hl2/bin/client.dylib, server.dylib). macOS 10.15+ cannot load i386. Retail game DLLs are unusable on this machine.
 
 ## Open questions (must resolve before M4)

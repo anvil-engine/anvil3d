@@ -23,19 +23,23 @@ target_link_libraries(anvil_platform PUBLIC anvil_common PRIVATE SDL3::SDL3)
 add_library(anvil_filesystem STATIC filesystem/filesystem.cpp filesystem/gameinfo.cpp filesystem/vpk.cpp)
 target_link_libraries(anvil_filesystem PUBLIC anvil_common)
 
+# Format parsers: pure functions over bytes, no I/O, no engine state.
+add_library(anvil_formats STATIC formats/bsp.cpp)
+target_link_libraries(anvil_formats PUBLIC anvil_common)
+
 add_library(anvil_engine STATIC engine/console.cpp compat/interfaces.cpp)
-target_link_libraries(anvil_engine PUBLIC anvil_platform anvil_filesystem)
+target_link_libraries(anvil_engine PUBLIC anvil_platform anvil_filesystem anvil_formats)
 
 add_executable(anvil engine/main.cpp)
 target_link_libraries(anvil PRIVATE anvil_engine)
 target_compile_definitions(anvil PRIVATE ANVIL_VERSION="${PROJECT_VERSION}")
 
 enable_testing()
-foreach(name cmdline keyvalues filesystem vpk console interfaces)
+foreach(name cmdline keyvalues filesystem vpk bsp console interfaces)
   add_executable(test_${name} tests/test_${name}.cpp)
   target_link_libraries(test_${name} PRIVATE anvil_engine)
 endforeach()
-foreach(name cmdline keyvalues filesystem vpk console)
+foreach(name cmdline keyvalues filesystem vpk bsp console)
   add_test(NAME ${name} COMMAND test_${name})
 endforeach()
 
@@ -43,6 +47,8 @@ endforeach()
 if(ANVIL_HL2_DIR)
   file(GLOB ANVIL_HL2_VPKS "${ANVIL_HL2_DIR}/hl2/*_dir.vpk" "${ANVIL_HL2_DIR}/platform/*_dir.vpk")
   add_test(NAME vpk_hl2 COMMAND test_vpk ${ANVIL_HL2_VPKS})
+  file(GLOB ANVIL_HL2_MAPS "${ANVIL_HL2_DIR}/hl2/maps/*.bsp")
+  add_test(NAME bsp_hl2 COMMAND test_bsp ${ANVIL_HL2_MAPS})
 endif()
 
 # Stand-in game module; hidden visibility so only the explicitly exported CreateInterface is visible.
