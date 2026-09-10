@@ -3,6 +3,9 @@
 ## M1 leftovers
 - [ ] Verify build on Windows (MSVC 2022, vcpkg SDL3).
 
+## Later (devui)
+- [ ] devui draw via renderer 2D path (M3); platform event hook for devui input; panels: mounts/VPKs, cvars, console, interfaces, modules.
+
 ## M2 (in order)
 1. [x] VPK v1/v2 directory parser (tree, archive index, preload bytes, `_dir` + `_NNN` parts) + synthetic test.
 2. [x] Mount VPK in FileSystem search paths (`foo.vpk` -> `foo_dir.vpk`); lowercase lookup; verify against real HL2 (hl2_pak_dir.vpk).

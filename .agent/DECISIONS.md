@@ -71,3 +71,11 @@ IMPACT: Options::hdr=false for an LDR path. Unknown conditions log DEBUG and cou
 DECISION: `patch` shader: insert and replace both overwrite-or-add.
 REASON: Simplest behavior that covers map pakfile cubemap patches.
 IMPACT: If a game relies on replace skipping absent keys, split the two.
+
+DECISION: Dear ImGui is the internal developer UI (anvil::devui), separate from Source-compatible VGUI. Optional: `-DANVIL_DEVUI=ON` (default OFF) + runtime `-devui`.
+REASON: Dev tooling must not shape the VGUI compatibility surface or become a core runtime dependency.
+IMPACT: devui/devui.h exposes no ImGui types; OFF build compiles no-op stubs and fetches nothing. ImGui context is a process global inside devui.cpp (third global after logging and interface registry).
+
+DECISION: devui renders through the renderer's generic 2D path (textured triangles + scissor), the same path VGUI ISurface will use. No imgui_impl_{vulkan,dx11,opengl3} backends; SDL3 input backend only when input routing exists.
+REASON: Avoids per-backend ImGui code and renderer logic that exists only for ImGui; one 2D primitive API serves VGUI and devui.
+IMPACT: Until M3 the overlay is built CPU-side each frame but not drawn. Input to devui needs a platform event hook (not yet present).

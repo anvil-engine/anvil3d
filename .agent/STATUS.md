@@ -16,6 +16,7 @@ Milestone: M2 Asset Foundation — core formats done (VPK, BSP world, VTF, VMT, 
 - formats/vtf: VTF 7.0-7.5 header, resources, cubemap faces, per mip/frame/face/slice image lookup, exact size validation. 5237/5237 HL2 textures parse (`vtf_hl2`). No pixel decoding yet.
 - formats/vmt: resolved material (shader, flat params, proxies) for dxlevel 95 + HDR; patch includes. 5304 HL2 materials resolve (`vmt_hl2`; 1 retail-broken dx60 file skipped).
 - formats/studio: MDL v44-48 + VVD v4 (fixups) + VTX v7 (trilists/tristrips) -> LOD0 default body; checksums cross-checked. 2171/2171 HL2 models load (`studio_hl2`). No skeleton/anim/flex/bodygroups yet.
+- devui/: optional Dear ImGui overlay (`-DANVIL_DEVUI=ON`, run with `-devui`); frames built headless, not displayed (no renderer).
 - Tests: cmdline, keyvalues, filesystem, console(+clock), interfaces (real module load), smoke (tests/data/testgame).
 
 ## Stubbed / not implemented

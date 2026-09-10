@@ -14,3 +14,7 @@ Getting SDL3:
 - macOS: `brew install sdl3`.
 
 If CMake cannot find SDL3, pass `-DCMAKE_PREFIX_PATH=<sdl3 install dir>`.
+
+Options:
+- `-DANVIL_DEVUI=ON` builds the developer overlay (Dear ImGui, downloaded at configure time). Run with `-devui`.
+- `-DANVIL_HL2_DIR=<Half-Life 2 install>` enables tests over your own game files.

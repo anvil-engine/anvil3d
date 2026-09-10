@@ -27,19 +27,38 @@ target_link_libraries(anvil_filesystem PUBLIC anvil_common)
 add_library(anvil_formats STATIC formats/bsp.cpp formats/vtf.cpp formats/vmt.cpp formats/studio.cpp)
 target_link_libraries(anvil_formats PUBLIC anvil_common)
 
+# Developer UI (Dear ImGui). Internal tooling only, never the game's VGUI. OFF = no dependency, no-op API.
+option(ANVIL_DEVUI "Build the Dear ImGui developer UI" OFF)
+add_library(anvil_devui STATIC devui/devui.cpp)
+target_link_libraries(anvil_devui PUBLIC anvil_common)
+if(ANVIL_DEVUI)
+  include(FetchContent)
+  FetchContent_Declare(imgui
+    URL https://github.com/ocornut/imgui/archive/refs/tags/v1.92.9b.tar.gz
+    URL_HASH SHA256=21d8a0a565e85dce943e375db00812c2f3f0ab21f3f0f7964e364a63422d7f99
+    DOWNLOAD_EXTRACT_TIMESTAMP ON)
+  FetchContent_MakeAvailable(imgui)
+  add_library(imgui STATIC ${imgui_SOURCE_DIR}/imgui.cpp ${imgui_SOURCE_DIR}/imgui_draw.cpp
+                           ${imgui_SOURCE_DIR}/imgui_tables.cpp ${imgui_SOURCE_DIR}/imgui_widgets.cpp)
+  target_include_directories(imgui SYSTEM PUBLIC ${imgui_SOURCE_DIR})
+  set_property(TARGET imgui PROPERTY COMPILE_OPTIONS "") # third-party: not held to our warning flags
+  target_link_libraries(anvil_devui PRIVATE imgui)
+  target_compile_definitions(anvil_devui PRIVATE ANVIL_DEVUI=1)
+endif()
+
 add_library(anvil_engine STATIC engine/console.cpp compat/interfaces.cpp)
-target_link_libraries(anvil_engine PUBLIC anvil_platform anvil_filesystem anvil_formats)
+target_link_libraries(anvil_engine PUBLIC anvil_platform anvil_filesystem anvil_formats anvil_devui)
 
 add_executable(anvil engine/main.cpp)
 target_link_libraries(anvil PRIVATE anvil_engine)
 target_compile_definitions(anvil PRIVATE ANVIL_VERSION="${PROJECT_VERSION}")
 
 enable_testing()
-foreach(name cmdline keyvalues filesystem vpk bsp vtf vmt studio console interfaces)
+foreach(name cmdline keyvalues filesystem vpk bsp vtf vmt studio console devui interfaces)
   add_executable(test_${name} tests/test_${name}.cpp)
   target_link_libraries(test_${name} PRIVATE anvil_engine)
 endforeach()
-foreach(name cmdline keyvalues filesystem vpk bsp vtf vmt studio console)
+foreach(name cmdline keyvalues filesystem vpk bsp vtf vmt studio console devui)
   add_test(NAME ${name} COMMAND test_${name})
 endforeach()
 

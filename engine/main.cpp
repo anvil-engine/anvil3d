@@ -2,6 +2,7 @@
 #include "common/log.h"
 #include "engine/clock.h"
 #include "engine/console.h"
+#include "devui/devui.h"
 #include "filesystem/filesystem.h"
 #include "filesystem/gameinfo.h"
 #include "platform/window.h"
@@ -78,6 +79,8 @@ int main(int argc, char** argv) {
   desc.fullscreen = cmdline.has("-full") && !cmdline.has("-windowed");
   const auto window = platform::Window::create(desc);
   if (!window) return 1;
+  // -devui: developer overlay (no-op unless built with ANVIL_DEVUI; not drawn until the renderer exists).
+  const bool devuiOn = cmdline.has("-devui") && devui::init();
 
   // -frames N: quit after N frames. Used by the smoke test and headless diagnostics.
   using SteadyClock = std::chrono::steady_clock;
@@ -85,11 +88,14 @@ int main(int argc, char** argv) {
   auto last = SteadyClock::now();
   for (int frame = 0; running && window->pumpEvents() && (maxFrames <= 0 || frame < maxFrames); ++frame) {
     const auto frameStart = SteadyClock::now();
-    clock.advance(std::chrono::duration<double>(frameStart - last).count()); // ticks unused until a server exists
+    const double dt = std::chrono::duration<double>(frameStart - last).count();
+    clock.advance(dt); // ticks unused until a server exists
     last = frameStart;
+    if (devuiOn) devui::frame(float(desc.width), float(desc.height), float(dt));
     if (fpsMax.asFloat() > 0) std::this_thread::sleep_until(frameStart + std::chrono::duration<double>(1.0 / fpsMax.asFloat()));
   }
 
+  devui::shutdown();
   ANVIL_INFO("engine", "Shutdown");
   return 0;
 }
