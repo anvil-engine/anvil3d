@@ -2,6 +2,8 @@
 
 #include "common/log.h"
 
+#include <cmath>
+
 namespace anvil::render {
 
 #if ANVIL_VULKAN
@@ -19,6 +21,24 @@ uint64_t textureBytes(TextureFormat format, uint32_t width, uint32_t height) {
     case TextureFormat::BC3: return blocks * 16;
   }
   return 0;
+}
+
+Mat4 operator*(const Mat4& a, const Mat4& b) {
+  Mat4 r;
+  for (int c = 0; c < 4; ++c)
+    for (int row = 0; row < 4; ++row)
+      for (int k = 0; k < 4; ++k) r.m[c * 4 + row] += a.m[k * 4 + row] * b.m[c * 4 + k];
+  return r;
+}
+
+Mat4 perspective(float fovYRadians, float aspect, float nearZ) {
+  const float f = 1.0f / std::tan(fovYRadians * 0.5f);
+  Mat4 p;
+  p.m[0] = f / aspect;
+  p.m[5] = f;
+  p.m[11] = -1.0f;  // w = -z_view
+  p.m[14] = nearZ; // z = near: depth = near / -z_view
+  return p;
 }
 
 std::unique_ptr<Device> createDevice(const DeviceOptions& options) {

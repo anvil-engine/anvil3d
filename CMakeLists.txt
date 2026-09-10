@@ -43,11 +43,17 @@ if(ANVIL_VULKAN)
   target_compile_definitions(anvil_render PRIVATE ANVIL_VULKAN=1)
   anvil_add_shader(anvil_render render/vulkan/shaders/ui.vert kUiVert)
   anvil_add_shader(anvil_render render/vulkan/shaders/ui.frag kUiFrag)
+  anvil_add_shader(anvil_render render/vulkan/shaders/world.vert kWorldVert)
+  anvil_add_shader(anvil_render render/vulkan/shaders/world.frag kWorldFrag)
 endif()
 
 # Material system (CPU side): VTF -> render::TextureData, BC decode. No GPU backend knowledge.
 add_library(anvil_materials STATIC materials/texture.cpp)
 target_link_libraries(anvil_materials PUBLIC anvil_formats anvil_render)
+
+# World: BSP -> mesh/lightmap atlas (CPU), map loading, material logic. Draws through render::Device only.
+add_library(anvil_world STATIC world/worldmesh.cpp world/world.cpp)
+target_link_libraries(anvil_world PUBLIC anvil_formats anvil_render anvil_materials anvil_filesystem)
 
 # Developer UI (Dear ImGui). Internal tooling only, never the game's VGUI. OFF = no dependency, no-op API.
 add_library(anvil_devui STATIC devui/devui.cpp)
@@ -58,18 +64,18 @@ if(ANVIL_DEVUI)
 endif()
 
 add_library(anvil_engine STATIC engine/console.cpp compat/interfaces.cpp)
-target_link_libraries(anvil_engine PUBLIC anvil_platform anvil_filesystem anvil_formats anvil_render anvil_materials anvil_devui)
+target_link_libraries(anvil_engine PUBLIC anvil_platform anvil_filesystem anvil_formats anvil_render anvil_materials anvil_world anvil_devui)
 
 add_executable(anvil engine/main.cpp)
 target_link_libraries(anvil PRIVATE anvil_engine)
 target_compile_definitions(anvil PRIVATE ANVIL_VERSION="${PROJECT_VERSION}")
 
 enable_testing()
-foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio textures console devui render swapchain interfaces)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio textures world console devui render swapchain interfaces)
   add_executable(test_${name} tests/test_${name}.cpp)
   target_link_libraries(test_${name} PRIVATE anvil_engine)
 endforeach()
-foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio textures console devui render swapchain)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio textures world console devui render swapchain)
   add_test(NAME ${name} COMMAND test_${name})
 endforeach()
 # GPU tests: 77 = skipped (no Vulkan / no display); any validation-layer message fails the test.
@@ -84,6 +90,8 @@ if(ANVIL_HL2_DIR)
   add_test(NAME vtf_hl2 COMMAND test_vtf ${ANVIL_HL2_VPKS})
   add_test(NAME vmt_hl2 COMMAND test_vmt ${ANVIL_HL2_VPKS} ${ANVIL_HL2_MAPS})
   add_test(NAME studio_hl2 COMMAND test_studio ${ANVIL_HL2_VPKS})
+  add_test(NAME world_hl2 COMMAND test_world "${ANVIL_HL2_DIR}/hl2")
+  set_tests_properties(world_hl2 PROPERTIES SKIP_RETURN_CODE 77 FAIL_REGULAR_EXPRESSION "validation:")
 endif()
 
 # Stand-in game module; hidden visibility so only the explicitly exported CreateInterface is visible.

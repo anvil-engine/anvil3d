@@ -1,7 +1,9 @@
 #include "formats/bsp.h"
 
 #include "common/bytes.h"
+#include "common/strutil.h"
 
+#include <cctype>
 #include <climits>
 #include <cstring>
 
@@ -340,6 +342,42 @@ std::optional<Map> load(std::string_view file, std::string* error) {
     return std::nullopt;
   }
   return map;
+}
+
+std::string_view Entity::get(std::string_view key) const {
+  for (const auto& [k, v] : keys)
+    if (iequals(k, key)) return v;
+  return {};
+}
+
+std::vector<Entity> parseEntities(std::string_view text) {
+  std::vector<Entity> out;
+  size_t i = 0;
+  // Next quoted string (no escapes, as in the lump); nullopt at '}' / end / malformed input.
+  auto quoted = [&]() -> std::optional<std::string> {
+    while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i]))) ++i;
+    if (i >= text.size() || text[i] != '"') return std::nullopt;
+    const size_t end = text.find('"', i + 1);
+    if (end == std::string_view::npos) return std::nullopt;
+    std::string s(text.substr(i + 1, end - i - 1));
+    i = end + 1;
+    return s;
+  };
+  while (true) {
+    while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i]))) ++i;
+    if (i >= text.size() || text[i] != '{') break;
+    ++i;
+    Entity e;
+    while (auto key = quoted()) {
+      auto value = quoted();
+      if (!value) return out;
+      e.keys.emplace_back(std::move(*key), std::move(*value));
+    }
+    if (i >= text.size() || text[i] != '}') break;
+    ++i;
+    out.push_back(std::move(e));
+  }
+  return out;
 }
 
 void faceVertices(const Map& map, const Face& face, std::vector<Vec3>& out) {

@@ -118,8 +118,28 @@ IMPACT: VMA types stay inside render/vulkan/device.cpp. Host-visible allocations
 
 DECISION: Texture path: materials::textureFromVtf keeps DXT1/3/5 as BC1/2/3 when the device reports textureCompressionBC, else decodes on the CPU; all other VTF formats convert to RGBA8. Frame 0 / face 0 / slice 0 only for now.
 REASON: Approved in review; BC optional on desktop Vulkan, required path for GLES later.
-IMPACT: RGBA16161616F is clamped to RGBA8 (HDR lost) until an HDR format exists. Conversions for ARGB8888, RGB565, BGRX5551, BGRA5551, BGRA4444 are UNVERIFIED (not used by HL2; D3D channel conventions assumed).
+IMPACT: RGBA16161616F is a temporary downgrade to RGBA8 (HDR range clamped, WARN per texture) until an HDR format exists; the float path belongs in render::TextureFormat/materials, not in backend code. Conversions for ARGB8888, RGB565, BGRX5551, BGRA5551, BGRA4444 are UNVERIFIED (not used by HL2; D3D channel conventions assumed; test_textures pins the assumed layouts). BC1 = DXT1 on the GPU; CPU decode matches native BC1 in both block modes (test_render, max channel difference 1 on Apple M4). Opaque materials ignore texture alpha, so DXT1 three-color-mode texels render black unless the material uses alpha.
 
 DECISION: One Vulkan device per process.
 REASON: volk stores device-level entry points globally (volkLoadDevice).
 IMPACT: Tests create devices sequentially. Switch to VolkDeviceTable if multiple devices are ever needed.
+
+DECISION: 3D render API = static meshes + Draw3D (texture * lightmap * colorScale; Opaque / AlphaTest / Translucent). viewProj is column-major, clip space y-up with reverse Z and infinite far plane (depth 1 at near, cleared to 0, GREATER_OR_EQUAL); the Vulkan vertex shader flips y. Depth format D32F > X8D24 > D16 (first supporting depth attachment).
+REASON: External review: keep the world representation and LightmappedGeneric logic above the backend. One fixed two-texture modulate covers LightmappedGeneric/UnlitGeneric without backend material knowledge; reverse Z gives float-depth precision over Source's long view distances.
+IMPACT: New material models that need more inputs extend Draw3D or add pipelines in the backend; material meaning stays in world/.
+
+DECISION: Lightmaps: style 0, flat sample set, ColorRGBExp32 -> linear (c / 255 * 2^exp) -> gamma 2.2 -> halved into an RGBA8 atlas; LightmappedGeneric draws base * lightmap * 2 in gamma space. LDR lighting lump preferred (HDR lump only when LDR is absent).
+REASON: Gamma-space modulate with 2x overbright headroom is the documented look of Source's LDR LightmappedGeneric; one 8-bit atlas, no float textures needed for the first playable map. Independent design, not tuned against Source output pixel-for-pixel.
+IMPACT: HDR maps (HDR-only lighting) render without tonemapping; brightness above 2x clamps. Revisit with the HDR/float texture path.
+
+DECISION: Displacement grid: start at the base-face corner nearest dispinfo.startPosition; vertex (row, col) at index row * n + col, rows advance along corner0 -> corner1, columns along corner0 -> corner3. Texture and lightmap coordinates come from the undisplaced (flat) position.
+REASON: Orientation determined empirically on all 78 HL2 maps: 67% of non-corner edge vertices coincide with a neighbouring displacement vs 5% for the transposed layout. Flat-position UVs reproduce Source's known texture stretching on displacements.
+IMPACT: Test pins the orientation (test_world). Lightmap coordinates of skewed displacement quads are approximate (projection, clamped to the block).
+
+DECISION: World draws model 0 only; surfaces with SKY, SKY2D, NODRAW, HINT, SKIP, TRIGGER are skipped. Water/Refract materials are skipped (STUB), unknown shaders fall back to LightmappedGeneric (PARTIAL, WARN once per shader).
+REASON: Brush entities need entity origins/angles (server-side placement) to be positioned; first milestone is the static world.
+IMPACT: Doors, func_brush and similar are missing until entities are placed.
+
+DECISION: anvil.cfg and `+commands` execute after window/renderer init.
+REASON: `+map` needs the render device; Source likewise runs +commands after engine init.
+IMPACT: Config cannot influence window/device creation (none does yet); use command-line switches for that.

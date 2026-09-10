@@ -1,5 +1,7 @@
 #include "materials/texture.h"
 
+#include "common/log.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -168,6 +170,9 @@ std::optional<render::TextureData> textureFromVtf(const vtf::Texture& vtf, bool 
   if (vtf.format == vtf::DXT3) bc = render::TextureFormat::BC2;
   if (vtf.format == vtf::DXT5) bc = render::TextureFormat::BC3;
 
+  if (vtf.format == vtf::RGBA16161616F)
+    ANVIL_WARN("materials", "PARTIAL: RGBA16161616F %ux%u texture downgraded to RGBA8 (HDR range clamped to [0,1])",
+               vtf.width, vtf.height);
   render::TextureData out;
   out.desc.width = vtf.width;
   out.desc.height = vtf.height;

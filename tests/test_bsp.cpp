@@ -169,6 +169,17 @@ int main(int argc, char** argv) {
     CHECK(map->staticPropVersion == 6 && map->staticProps.size() == 1 &&
           map->staticPropModels[0] == "models/props_c17/oildrum001.mdl" && map->staticProps[0].origin.x == 16);
   }
+  // Entity lump: blocks of quoted pairs, repeated keys kept, case-insensitive lookup, truncated tail dropped.
+  const auto ents = bsp::parseEntities("{\n\"classname\" \"worldspawn\"\n}\n"
+                                       "{ \"classname\" \"info_player_start\" \"Origin\" \"1 2 3\"\n"
+                                       "\"OnTrigger\" \"a\" \"OnTrigger\" \"b\" }\n{ \"broken\" ");
+  CHECK(ents.size() == 2);
+  if (ents.size() == 2) {
+    CHECK(ents[0].get("classname") == "worldspawn" && ents[0].get("origin").empty());
+    CHECK(ents[1].get("ORIGIN") == "1 2 3" && ents[1].keys.size() == 4 && ents[1].keys[3].second == "b");
+  }
+  CHECK(bsp::parseEntities("{ \"unterminated").empty());
+
   CHECK(bsp::load(b.build(19)).has_value());
   CHECK(!bsp::load(b.build(21)).has_value());
 

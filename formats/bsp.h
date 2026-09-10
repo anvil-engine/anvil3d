@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace anvil::bsp {
@@ -24,6 +25,17 @@ struct Plane {
 
 struct Edge {
   uint16_t v[2];
+};
+
+// TexInfo::flags bits (documented Source surface flags; subset the renderer reads).
+enum SurfFlags : int32_t {
+  SURF_SKY2D = 0x2,
+  SURF_SKY = 0x4,
+  SURF_TRIGGER = 0x40,
+  SURF_NODRAW = 0x80,
+  SURF_HINT = 0x100,
+  SURF_SKIP = 0x200,
+  SURF_BUMPLIGHT = 0x800, // lightmap has 3 extra bumped samples per luxel after the flat one
 };
 
 struct TexInfo {
@@ -181,6 +193,15 @@ enum Lump {
 };
 
 std::optional<Map> load(std::string_view file, std::string* error = nullptr);
+
+// One block of the entity lump: "key" "value" pairs in file order (keys may repeat, e.g. outputs).
+struct Entity {
+  std::vector<std::pair<std::string, std::string>> keys;
+  std::string_view get(std::string_view key) const; // first match, case-insensitive; empty if absent
+};
+
+// Parses entity lump text. Tolerant: stops at the first malformed token and returns what was complete.
+std::vector<Entity> parseEntities(std::string_view text);
 
 // Polygon of a face, in winding order.
 void faceVertices(const Map& map, const Face& face, std::vector<Vec3>& out);

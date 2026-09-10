@@ -35,6 +35,18 @@ public:
   // Logical window size (the coordinate space of mouse input).
   void logicalSize(uint32_t& width, uint32_t& height) const;
 
+  // Input state as of the last pumpEvents(). Key names are SDL key names, case-insensitive ("W", "Space",
+  // "Left Shift"); unknown names read as released. Mouse buttons: 1 left, 2 right, 3 middle (Source MOUSE1-3).
+  bool keyDown(const char* name) const;
+  bool mouseDown(int button) const;
+  // Mouse motion accumulated by the last pumpEvents(), in logical units (unbounded in relative mode).
+  void mouseDelta(float& dx, float& dy) const {
+    dx = mouseDx_;
+    dy = mouseDy_;
+  }
+  // Relative mode: cursor hidden and captured, motion keeps reporting at the screen edge (mouse look).
+  void setRelativeMouse(bool on);
+
   // Vulkan surface for a window created with desc.vulkan. Handles are opaque so this header needs no Vulkan
   // include: `instance` is a VkInstance, the result a VkSurfaceKHR (0 on failure, logged). Caller destroys it.
   uint64_t createVulkanSurface(void* instance) const;
@@ -43,6 +55,7 @@ private:
   explicit Window(SDL_Window* window) : window_(window) {}
   SDL_Window* window_;
   bool vulkan_ = false;
+  float mouseDx_ = 0, mouseDy_ = 0;
 };
 
 // Vulkan implementation discovery: system loader, or MoltenVK on Apple (Homebrew prefixes included).

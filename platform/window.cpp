@@ -125,11 +125,30 @@ uint64_t Window::createVulkanSurface(void* instance) const {
 
 bool Window::pumpEvents() {
   bool running = true;
+  mouseDx_ = mouseDy_ = 0;
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
     if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) running = false;
+    if (event.type == SDL_EVENT_MOUSE_MOTION) {
+      mouseDx_ += event.motion.xrel;
+      mouseDy_ += event.motion.yrel;
+    }
   }
   return running;
 }
+
+bool Window::keyDown(const char* name) const {
+  const SDL_Scancode code = SDL_GetScancodeFromName(name);
+  int count = 0;
+  const bool* keys = SDL_GetKeyboardState(&count);
+  return code != SDL_SCANCODE_UNKNOWN && int(code) < count && keys[code];
+}
+
+bool Window::mouseDown(int button) const {
+  const int sdl[4] = {0, SDL_BUTTON_LEFT, SDL_BUTTON_RIGHT, SDL_BUTTON_MIDDLE};
+  return button >= 1 && button <= 3 && (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_MASK(sdl[button]));
+}
+
+void Window::setRelativeMouse(bool on) { SDL_SetWindowRelativeMouseMode(window_, on); }
 
 } // namespace anvil::platform

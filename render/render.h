@@ -79,6 +79,42 @@ struct Batch2D {
   }
 };
 
+// ---- 3D path: static indexed meshes (world geometry). ----
+struct Vertex3D {
+  float x, y, z;
+  float u, v;   // texture coordinates
+  float lu, lv; // lightmap coordinates
+};
+
+// 0 = no mesh.
+using MeshHandle = uint32_t;
+
+enum class Blend : uint8_t {
+  Opaque,      // depth test + write, no blending
+  AlphaTest,   // as Opaque, texels with alpha < alphaRef discarded
+  Translucent, // depth test, no depth write, dst = src * a + dst * (1 - a); caller orders draws
+};
+
+// Fixed two-texture modulate: rgb = texture(u,v).rgb * lightmap(lu,lv).rgb * colorScale, alpha = texture alpha.
+// What the textures mean (base map, lightmap, overbright factor) is decided by the material layer above.
+struct Draw3D {
+  TextureHandle texture = 0;  // 0 = white
+  TextureHandle lightmap = 0; // 0 = white
+  uint32_t firstIndex = 0, indexCount = 0; // triangle list range in the mesh
+  float colorScale = 1.0f;
+  Blend blend = Blend::Opaque;
+  float alphaRef = 0.5f;
+};
+
+// Column-major 4x4 (m[col * 4 + row]).
+struct Mat4 {
+  float m[16] = {};
+};
+Mat4 operator*(const Mat4& a, const Mat4& b);
+// Clip-space convention of draw3d: x right, y up, reverse Z (depth 1 at the near plane, 0 at infinity).
+// View space is right-handed looking down -Z with +Y up. Infinite far plane.
+Mat4 perspective(float fovYRadians, float aspect, float nearZ);
+
 struct DeviceOptions {
   Backend backend = Backend::Vulkan;
   platform::Window* window = nullptr; // null = headless: render into an offscreen target (tests, tools)
@@ -100,9 +136,16 @@ public:
   // Freed once no frame in flight can still use it.
   virtual void destroyTexture(TextureHandle texture) = 0;
 
-  // Starts a frame and clears the target. False = nothing to draw this frame (e.g. minimized); skip to next.
+  // Static GPU mesh. Returns 0 (logged) on empty input, a non-triangle index count or an out-of-range index.
+  virtual MeshHandle createMesh(std::span<const Vertex3D> vertices, std::span<const uint32_t> indices) = 0;
+  // Freed once no frame in flight can still use it.
+  virtual void destroyMesh(MeshHandle mesh) = 0;
+
+  // Starts a frame and clears the target (color + depth). False = nothing to draw this frame (e.g. minimized).
   virtual bool beginFrame(const float clearColor[4]) = 0;
   virtual void targetSize(uint32_t& width, uint32_t& height) const = 0;
+  // Draws are recorded in order. Ranges outside the mesh are skipped. 3D before 2D: 2D ignores depth.
+  virtual void draw3d(MeshHandle mesh, const Mat4& viewProj, std::span<const Draw3D> draws) = 0;
   virtual void draw2d(const Batch2D& batch) = 0; // any number of batches per frame, drawn in call order
   virtual void endFrame() = 0;
 

@@ -3,6 +3,7 @@
 #include "render/render.h"
 #include "check.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 
@@ -148,6 +149,32 @@ int main() {
   } else {
     std::puts("device lacks BC: native BC path not exercised here");
   }
+  // BC1 native vs CPU decode: one four-color block (c0 > c1) and one three-color block (c0 <= c1, index 3 =
+  // transparent black), all four indices each. Drawn magnified; the two paths must match within rounding.
+  if (device->caps().textureCompressionBC) {
+    std::string blocks(16, '\0');
+    const uint16_t ends[4] = {0xF800, 0x001F, 0x07E0, 0xF81F}; // red > blue: 4-color; green < magenta: 3-color
+    const uint32_t idx = 0b11100100'11100100'11100100'11100100;  // texel x = index x in every row
+    for (int b = 0; b < 2; ++b) {
+      std::memcpy(blocks.data() + b * 8, &ends[b * 2], 4);
+      std::memcpy(blocks.data() + b * 8 + 4, &idx, 4);
+    }
+    TextureDesc two = nearestRgba(8, 4);
+    two.format = TextureFormat::BC1;
+    const TextureHandle native = device->createTexture(two, {reinterpret_cast<const uint8_t*>(blocks.data()), 16});
+    std::vector<uint8_t> decoded(8 * 4 * 4);
+    anvil::materials::decodeBC(TextureFormat::BC1, blocks, 8, 4, decoded.data());
+    const TextureHandle cpu = device->createTexture(nearestRgba(8, 4), decoded);
+    CHECK(native != 0 && cpu != 0);
+    const auto a = drawFull(*device, native), b = drawFull(*device, cpu);
+    int worst = 0;
+    for (size_t i = 0; i < a.size() && i < b.size(); ++i) worst = std::max(worst, std::abs(a[i] - b[i]));
+    std::printf("BC1 native vs CPU: max channel difference %d\n", worst);
+    CHECK(a.size() == b.size() && worst <= 3);
+    CHECK(pixelNear(b, 60, 4, 0, 0, 0)); // three-color index 3: transparent -> black background
+    device->destroyTexture(native);
+    device->destroyTexture(cpu);
+  }
   TextureDesc mipDesc = nearestRgba(2, 2);
   mipDesc.mipCount = 2; // 2x2 + 1x1
   const uint8_t chain[20] = {0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 9, 9, 9, 255};
@@ -159,6 +186,62 @@ int main() {
   mipDesc.mipCount = 3;
   CHECK(device->createTexture(mipDesc, chain) == 0); // more mips than 2x2 has
   device->destroyTexture(mipTex);
+
+  // 3D: view = world, looking down -Z; 90 degree FOV, so at depth d the view spans [-d, d].
+  {
+    const Mat4 viewProj = perspective(3.14159265f / 2, 1.0f, 1.0f);
+    std::vector<Vertex3D> verts;
+    std::vector<uint32_t> idx;
+    auto quad3 = [&](float x0, float y0, float x1, float y1, float z) {
+      const auto base = uint32_t(verts.size());
+      for (auto [x, y] : {std::pair{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}) verts.push_back({x, y, z, 0.5f, 0.5f, 0.5f, 0.5f});
+      for (uint32_t i : {0u, 1u, 2u, 0u, 2u, 3u}) idx.push_back(base + i);
+    };
+    quad3(-2, -2, 0, 2, -2);  // near, left half
+    quad3(-4, -4, 4, 4, -4);  // far, whole view
+    quad3(0, 0, 3, 3, -3);    // top-right quadrant
+    quad3(0, -3, 3, 0, -3);   // bottom-right quadrant
+    const MeshHandle mesh = device->createMesh(verts, idx);
+    CHECK(mesh != 0);
+    CHECK(device->createMesh(verts, std::vector<uint32_t>{0, 1, 99}) == 0); // index past the vertices
+    CHECK(device->createMesh(verts, std::vector<uint32_t>{0, 1}) == 0);     // not a triangle list
+    const uint8_t base[4] = {200, 100, 50, 255}, gray[4] = {128, 128, 128, 255}, clear0[4] = {255, 255, 0, 0},
+                  half[4] = {255, 255, 255, 128};
+    const TextureHandle baseTex = device->createTexture(nearestRgba(1, 1), base);
+    const TextureHandle lightTex = device->createTexture(nearestRgba(1, 1), gray);
+    const TextureHandle holeTex = device->createTexture(nearestRgba(1, 1), clear0);
+    const TextureHandle glassTex = device->createTexture(nearestRgba(1, 1), half);
+    const uint8_t blue[4] = {0, 0, 255, 255};
+    const TextureHandle blueTex = device->createTexture(nearestRgba(1, 1), blue);
+    Draw3D draws[5];
+    draws[0] = {baseTex, lightTex, 0, 6, 2.0f, Blend::Opaque}; // 200,100,50 * (128/255 * 2)
+    draws[1] = {blueTex, 0, 6, 6, 1.0f, Blend::Opaque};        // drawn after, farther: loses the depth test
+    draws[2] = {holeTex, 0, 12, 6, 1.0f, Blend::AlphaTest};    // alpha 0: discarded
+    draws[3] = {glassTex, 0, 18, 6, 1.0f, Blend::Translucent}; // 50% white over blue
+    draws[4] = {baseTex, 0, 100, 6, 1.0f, Blend::Opaque};      // out of range: skipped
+    CHECK(device->beginFrame(black));
+    device->draw3d(mesh, viewProj, draws);
+    device->endFrame();
+    px = device->readPixels();
+    if (px.size() == kSize * kSize * 4) {
+      CHECK(pixelNear(px, 16, 32, 201, 100, 50));                            // near quad, depth-tested
+      CHECK(pixelNear(px, 48, 16, 0, 0, 255));                               // top right: discarded texels
+      CHECK(pixelNear(px, 48, 48, 128, 128, 255));                           // bottom right: blended (y up)
+    }
+    // Destroyed inside its frame: still drawn by that frame, gone afterwards (handle ignored).
+    CHECK(device->beginFrame(black));
+    device->draw3d(mesh, viewProj, std::span(draws, 2));
+    device->destroyMesh(mesh);
+    device->endFrame();
+    px = device->readPixels();
+    if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 48, 16, 0, 0, 255));
+    CHECK(device->beginFrame(black));
+    device->draw3d(mesh, viewProj, draws);
+    device->endFrame();
+    px = device->readPixels();
+    if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 16, 32, 0, 0, 0));
+    for (TextureHandle t : {baseTex, lightTex, holeTex, glassTex, blueTex}) device->destroyTexture(t);
+  }
 
   // CPU fallback: a device forced to report no BC rejects BC1 and draws the decoded RGBA8 instead.
   // One Vulkan device at a time (volk keeps device entry points process-global).

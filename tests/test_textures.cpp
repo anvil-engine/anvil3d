@@ -79,6 +79,19 @@ int main() {
   CHECK(materials::convertToRGBA8(vtf::RGBA16161616F, half1, 1, 1, one.data()) && texel(one, 1, 0, 0, 255, 0, 255, 255));
   CHECK(!materials::convertToRGBA8(vtf::P8, std::string("\x00", 1), 1, 1, one.data()));
 
+  // Formats HL2 does not use: these pin anvil's ASSUMED layouts (D3D conventions, little-endian 16-bit words).
+  // They document channel order and bit expansion; they do NOT verify against real VTF files (still UNVERIFIED).
+  auto conv = [&](vtf::Format f, std::string bytes) { return materials::convertToRGBA8(f, bytes, 1, 1, one.data()); };
+  CHECK(conv(vtf::ARGB8888, std::string("\x40\x10\x20\x30", 4)) && texel(one, 1, 0, 0, 0x10, 0x20, 0x30, 0x40));
+  CHECK(conv(vtf::RGB565, std::string("\x00\xF8", 2)) && texel(one, 1, 0, 0, 255, 0, 0, 255));  // red in bits 15-11
+  CHECK(conv(vtf::RGB565, std::string("\xE0\x07", 2)) && texel(one, 1, 0, 0, 0, 255, 0, 255));  // green 10-5
+  CHECK(conv(vtf::RGB565, std::string("\x41\x08", 2)) && texel(one, 1, 0, 0, 8, 8, 8, 255));    // 1,2,1 -> replicated
+  CHECK(conv(vtf::BGRX5551, std::string("\x00\xFC", 2)) && texel(one, 1, 0, 0, 255, 0, 0, 255)); // X bit ignored
+  CHECK(conv(vtf::BGRX5551, std::string("\x21\x04", 2)) && texel(one, 1, 0, 0, 8, 8, 8, 255));  // 1,1,1 -> replicated
+  CHECK(conv(vtf::BGRA5551, std::string("\x1F\x80", 2)) && texel(one, 1, 0, 0, 0, 0, 255, 255)); // alpha bit 15
+  CHECK(conv(vtf::BGRA5551, std::string("\x1F\x00", 2)) && texel(one, 1, 0, 0, 0, 0, 255, 0));
+  CHECK(conv(vtf::BGRA4444, std::string("\x34\x12", 2)) && texel(one, 1, 0, 0, 34, 51, 68, 17)); // A R G B nibbles
+
   // VTF -> TextureData: DXT1 8x8 with 4 mips, both paths.
   const std::string red = bc1(0xF800, 0xF800, 0);
   std::string mips = red /*1x1*/ + red /*2x2*/ + red /*4x4*/ + red + red + red + red /*8x8*/;

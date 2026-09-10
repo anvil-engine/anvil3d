@@ -1,0 +1,209 @@
+// World mesh builder on a synthetic map; optional real-data pass: test_world <Half-Life 2>/hl2 loads every map
+// (CPU), then renders d1_trainstation_01 headless (skipped without Vulkan). ANVIL_WORLD_SHOT=<file.bmp> saves it.
+#include "filesystem/filesystem.h"
+#include "filesystem/gameinfo.h"
+#include "world/world.h"
+#include "world/worldmesh.h"
+#include "check.h"
+
+#include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+
+using namespace anvil;
+
+namespace {
+
+bsp::Map syntheticMap() {
+  bsp::Map m;
+  m.vertices = {{0, 0, 0}, {64, 0, 0}, {64, 64, 0}, {0, 64, 0}};
+  m.edges = {{{0, 0}}, {{0, 1}}, {{1, 2}}, {{2, 3}}, {{3, 0}}};
+  m.surfedges = {1, 2, 3, 4};
+  m.planes = {{{0, 0, 1}, 0, 2}};
+  m.texdataNames = {"DEV/A", "TOOLS/TOOLSNODRAW", "DEV/B"};
+  m.texdatas = {{{}, 0, 64, 64, 64, 64}, {{}, 1, 64, 64, 64, 64}, {{}, 2, 32, 32, 32, 32}};
+  // 1 texel per unit, 1 luxel per 16 units: a 64x64 quad has 5x5 luxels.
+  const bsp::TexInfo lit{{{1, 0, 0, 0}, {0, 1, 0, 0}}, {{1 / 16.0f, 0, 0, 0}, {0, 1 / 16.0f, 0, 0}}, 0, 0};
+  bsp::TexInfo nodraw = lit, disp = lit;
+  nodraw.flags = bsp::SURF_NODRAW;
+  nodraw.texdata = 1;
+  disp.texdata = 2;
+  m.texinfos = {lit, nodraw, disp};
+
+  bsp::Face quad{};
+  quad.numedges = 4;
+  quad.dispinfo = -1;
+  quad.lightmapSize[0] = quad.lightmapSize[1] = 4;
+  bsp::Face hidden = quad, grid = quad, badLight = quad;
+  hidden.texinfo = 1;
+  grid.texinfo = 2;
+  grid.dispinfo = 0;
+  grid.lightofs = -1;         // unlit: white block
+  badLight.lightofs = 4 * 10; // 25 samples from sample 10 run past the 25-sample lump
+  m.faces = {quad, hidden, grid, badLight};
+  m.models = {{{}, {}, {}, 0, 0, 4}};
+
+  // Lighting: 25 samples of (255,255,255, exp 0); sample 0 exponent -1, sample 24 exponent +1.
+  for (int i = 0; i < 25; ++i) m.lighting += std::string("\xFF\xFF\xFF", 3) + char(i == 0 ? -1 : i == 24 ? 1 : 0);
+
+  bsp::DispInfo d{};
+  d.startPosition = {64, 0, 0}; // corner 1: grid starts there
+  d.power = 2;
+  d.mapFace = 2;
+  m.dispInfos = {d};
+  for (int i = 0; i < 25; ++i) m.dispVerts.push_back({{0, 0, 1}, float(i), 0});
+  return m;
+}
+
+const uint8_t* atlasTexel(const world::Mesh& mesh, float lu, float lv) {
+  const auto x = uint32_t(lu * float(mesh.lightmap.desc.width)), y = uint32_t(lv * float(mesh.lightmap.desc.height));
+  return &mesh.lightmap.pixels[(size_t(y) * mesh.lightmap.desc.width + x) * 4];
+}
+
+bool near(float a, float b) { return std::fabs(a - b) < 1e-3f; }
+
+bool vertexAt(const render::Vertex3D& v, float x, float y, float z) {
+  const bool ok = near(v.x, x) && near(v.y, y) && near(v.z, z);
+  if (!ok) std::fprintf(stderr, "vertex (%g %g %g), expected (%g %g %g)\n", v.x, v.y, v.z, x, y, z);
+  return ok;
+}
+
+void writeBmp(const char* path, const std::vector<uint8_t>& rgba, uint32_t w, uint32_t h) {
+  const uint32_t row = (w * 3 + 3) & ~3u, size = 54 + row * h;
+  std::string f(size, '\0');
+  auto put32 = [&](size_t off, uint32_t v) { std::memcpy(f.data() + off, &v, 4); };
+  f[0] = 'B';
+  f[1] = 'M';
+  put32(2, size);
+  put32(10, 54);
+  put32(14, 40);
+  put32(18, w);
+  put32(22, h);
+  put32(26, 1 | (24 << 16)); // planes, bits per pixel
+  for (uint32_t y = 0; y < h; ++y)
+    for (uint32_t x = 0; x < w; ++x) {
+      const uint8_t* p = &rgba[(size_t(h - 1 - y) * w + x) * 4]; // BMP rows are bottom-up
+      char* q = f.data() + 54 + size_t(y) * row + x * 3;
+      q[0] = char(p[2]);
+      q[1] = char(p[1]);
+      q[2] = char(p[0]);
+    }
+  std::ofstream(path, std::ios::binary).write(f.data(), std::streamsize(f.size()));
+}
+
+int realData(const std::filesystem::path& modDir) {
+  FileSystem fsys;
+  const auto text = readOsFile(modDir / "gameinfo.txt");
+  const auto info = text ? parseGameInfo(*text, modDir.parent_path(), modDir) : std::nullopt;
+  CHECK(info.has_value());
+  if (!info) return TEST_RESULT();
+  mountGameInfo(fsys, *info);
+
+  size_t maps = 0, missing = 0;
+  for (const auto& entry : std::filesystem::directory_iterator(modDir / "maps")) {
+    if (entry.path().extension() != ".bsp") continue;
+    if (entry.file_size() == 0) { // broken install, not a loader problem
+      std::fprintf(stderr, "%s: empty file, skipped\n", entry.path().filename().string().c_str());
+      continue;
+    }
+    const auto w = world::World::load(fsys, nullptr, entry.path().stem().string());
+    CHECK(w != nullptr);
+    if (w) missing += w->missingAssets();
+    ++maps;
+  }
+  std::printf("%zu maps loaded (CPU), %zu missing materials/textures\n", maps, missing);
+
+  render::DeviceOptions options;
+  options.width = 1280;
+  options.height = 720;
+  options.debug = std::getenv("ANVIL_VK_DEBUG") != nullptr;
+  auto device = render::createDevice(options);
+  if (!device) {
+    std::puts("GPU pass skipped: no Vulkan implementation");
+    return g_failures ? 1 : 77;
+  }
+  auto w = world::World::load(fsys, device.get(), "d1_trainstation_01");
+  CHECK(w != nullptr);
+  if (w) {
+    const float clear[4] = {1, 0, 1, 1};
+    CHECK(device->beginFrame(clear));
+    w->draw(w->spawnPoint(), 1280.0f / 720.0f);
+    device->endFrame();
+    const auto px = device->readPixels();
+    size_t covered = 0;
+    for (size_t i = 0; i + 3 < px.size(); i += 4) covered += !(px[i] == 255 && px[i + 1] == 0 && px[i + 2] == 255);
+    std::printf("d1_trainstation_01: %.1f%% of pixels drawn\n", 100.0 * double(covered) / double(1280 * 720));
+    CHECK(covered > 1280 * 720 / 2); // the spawn view is enclosed: world fills most of the screen
+    if (const char* shot = std::getenv("ANVIL_WORLD_SHOT")) writeBmp(shot, px, 1280, 720);
+  }
+  w.reset(); // before the device
+  return TEST_RESULT();
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+  if (argc > 1) return realData(argv[1]);
+
+  uint8_t px[4];
+  const uint8_t full[4] = {255, 255, 255, 0}, half[4] = {255, 255, 255, uint8_t(-1)}, dbl[4] = {255, 255, 255, 1};
+  world::luxelToRgba(full, px); // linear 1.0 -> gamma 1.0 -> stored / 2
+  CHECK(px[0] == 128 && px[3] == 255);
+  world::luxelToRgba(half, px); // 0.5^(1/2.2) / 2
+  CHECK(px[0] == 93);
+  world::luxelToRgba(dbl, px);  // 2^(1/2.2) / 2
+  CHECK(px[0] == 175);
+
+  const bsp::Map map = syntheticMap();
+  const world::Mesh mesh = world::buildMesh(map);
+  CHECK(mesh.faces == 2 && mesh.displacements == 1 && mesh.badLightmaps == 1);
+  // Batches by texdata: quads (texdata 0), then the displacement (texdata 2); nodraw skipped.
+  CHECK(mesh.batches.size() == 2);
+  if (mesh.batches.size() == 2) {
+    CHECK(mesh.batches[0].texdata == 0 && mesh.batches[0].firstIndex == 0 && mesh.batches[0].indexCount == 12);
+    CHECK(mesh.batches[1].texdata == 2 && mesh.batches[1].firstIndex == 12 && mesh.batches[1].indexCount == 4 * 4 * 6);
+  }
+  CHECK(mesh.vertices.size() == 4 + 4 + 25 && mesh.indices.size() == 12 + 96);
+  for (uint32_t i : mesh.indices) CHECK(i < mesh.vertices.size());
+  if (mesh.vertices.size() == 33) {
+    // Lit quad: texture repeats from the projection, luxels 0 and 24 at its corners.
+    const render::Vertex3D& v0 = mesh.vertices[0];
+    const render::Vertex3D& v2 = mesh.vertices[2];
+    CHECK(vertexAt(v2, 64, 64, 0) && near(v2.u, 1) && near(v2.v, 1));
+    CHECK(atlasTexel(mesh, v0.lu, v0.lv)[0] == 93 && atlasTexel(mesh, v2.lu, v2.lv)[0] == 175);
+    CHECK(atlasTexel(mesh, mesh.vertices[1].lu, mesh.vertices[1].lv)[0] == 128);
+    // Out-of-range lightmap and unlit displacement: white block.
+    CHECK(atlasTexel(mesh, mesh.vertices[4].lu, mesh.vertices[4].lv)[0] == 255);
+    CHECK(atlasTexel(mesh, mesh.vertices[8].lu, mesh.vertices[8].lv)[0] == 255);
+    // Displacement: starts at corner 1 (64,0,0); rows run toward corner 2, columns toward corner 0.
+    // Offsets are (0,0,dist) with dist = vertex index; UVs come from the undisplaced position (texdata 32 wide).
+    CHECK(vertexAt(mesh.vertices[8], 64, 0, 0));
+    CHECK(vertexAt(mesh.vertices[8 + 1], 48, 0, 1));  // next column
+    CHECK(vertexAt(mesh.vertices[8 + 5], 64, 16, 5)); // next row
+    CHECK(vertexAt(mesh.vertices[8 + 24], 0, 64, 24));
+    CHECK(near(mesh.vertices[8 + 5].u, 2) && near(mesh.vertices[8 + 5].v, 0.5f));
+  }
+  CHECK(mesh.lightmap.pixels.size() == size_t(mesh.lightmap.desc.width) * mesh.lightmap.desc.height * 4);
+
+  // Camera: Source axes (x forward at yaw 0, y left, z up) -> clip space (x right, y up, reverse Z).
+  auto clip = [](const world::Camera& c, bsp::Vec3 p, float out[4]) {
+    const render::Mat4 m = world::viewProjection(c, 1.0f);
+    for (int r = 0; r < 4; ++r) out[r] = m.m[r] * p.x + m.m[4 + r] * p.y + m.m[8 + r] * p.z + m.m[12 + r];
+  };
+  float c[4];
+  world::Camera cam;
+  clip(cam, {100, 0, 0}, c);
+  CHECK(near(c[0], 0) && near(c[1], 0) && near(c[3], 100) && near(c[2] / c[3], 0.04f)); // depth = near / distance
+  clip(cam, {100, -10, 5}, c);
+  CHECK(c[0] > 0 && c[1] > 0); // right and up
+  cam.yaw = 90;
+  cam.origin = {10, 0, 0};
+  clip(cam, {10, 50, 0}, c);
+  CHECK(near(c[0], 0) && near(c[1], 0) && near(c[3], 50));
+  cam.yaw = 0;
+  cam.pitch = 90; // looking straight down
+  clip(cam, {10, 0, -20}, c);
+  CHECK(near(c[0], 0) && near(c[1], 0) && near(c[3], 20));
+  return TEST_RESULT();
+}

@@ -6,7 +6,9 @@
 ## M3 follow-ups (not blocking)
 - [ ] Per-device volk tables (VolkDeviceTable) if more than one Vulkan device per process is ever needed.
 - [ ] HDR texture format (RGBA16F) instead of clamping RGBA16161616F to RGBA8.
-- [ ] Async texture upload (transfer ring) instead of vkQueueWaitIdle per texture.
+- [ ] Async texture upload (transfer ring) instead of vkQueueWaitIdle per texture/mesh.
+- [ ] Verify ARGB8888/RGB565/BGRX5551/BGRA5551/BGRA4444 channel order against real VTF files (tests pin assumed D3D layouts only).
+- [ ] Backface culling (currently off).
 
 ## Before first binary release
 - [ ] licenses/ with SDL3 (zlib) and Dear ImGui (MIT) texts.
@@ -28,7 +30,10 @@
 0. [x] Vulkan sync/lifetime pass (validation + sync validation clean). [x] VMA.
 1. [x] render::2d + render::Device API; Vulkan backend (swapchain + headless offscreen); RGBA8 textures.
 2. [x] VTF -> render::TextureData (materials/texture) -> render::Texture: BC1-3 native when caps.textureCompressionBC, CPU decode otherwise; mip chains; sampler addressing from VTF flags. (DXT1/3/5, BGR(A)888x, RGBA16F, UV88); material -> texture binding.
-3. [ ] World mesh builder: faces -> polygons, displacement grids, lightmap atlas; LightmappedGeneric/WorldVertexTransition basics.
-4. [ ] Static props via studio loader; skybox (sky shader, 2D skybox camera later).
-5. [ ] PVS/frustum culling; `map <name>` command mounts pakfile, loads BSP, renders.
+3. [x] World mesh builder: faces -> polygons, displacement grids, lightmap atlas; LightmappedGeneric basics; `map <name>`; free camera.
+3a. [ ] WorldVertexTransition blend ($basetexture2 by displacement alpha); UnlitTwoTexture; translucent sorting.
+3b. [ ] Brush entities (models *N) placed by entity origin/angles; sky (skybox faces, sky_camera later).
+4. [ ] Static props via studio loader.
+5. [ ] PVS/frustum culling.
+6. [ ] Lightmap styles / bumped lightmaps; HDR lighting lump path with tonemapping.
 6. [x] devui draws through render::2d.
