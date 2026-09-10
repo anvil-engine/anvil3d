@@ -143,3 +143,7 @@ IMPACT: Doors, func_brush and similar are missing until entities are placed.
 DECISION: anvil.cfg and `+commands` execute after window/renderer init.
 REASON: `+map` needs the render device; Source likewise runs +commands after engine init.
 IMPACT: Config cannot influence window/device creation (none does yet); use command-line switches for that.
+
+DECISION: World visibility is per mesh face: PVS (camera cluster vs the clusters the face lies in) then frustum (face AABB vs left/right/bottom/top/near planes of viewProj). Visible faces of each material are merged into contiguous index ranges; no per-frame index buffer. Camera in a solid leaf (cluster -1) or a map without vis data: PVS not applied.
+REASON: Smallest correct step: O(faces) per frame (~7k faces on trainstation, negligible) and no render API change. Displacement faces are absent from leaf face lists in all 78 HL2 maps, so their clusters come from their bounds pushed down the node tree (0.1-unit epsilon, both sides when straddling).
+IMPACT: Areaportals and occlusion are not used. Draw count grows with fragmentation (86-212 draws at trainstation spawn); switch to a per-frame index buffer if draw count becomes a cost.

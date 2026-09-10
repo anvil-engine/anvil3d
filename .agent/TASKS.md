@@ -34,6 +34,6 @@
 3a. [ ] WorldVertexTransition blend ($basetexture2 by displacement alpha); UnlitTwoTexture; translucent sorting.
 3b. [ ] Brush entities (models *N) placed by entity origin/angles; sky (skybox faces, sky_camera later).
 4. [ ] Static props via studio loader.
-5. [ ] PVS/frustum culling.
+5. [x] PVS/frustum culling (per face; no areaportals, no occlusion).
 6. [ ] Lightmap styles / bumped lightmaps; HDR lighting lump path with tonemapping.
 6. [x] devui draws through render::2d.

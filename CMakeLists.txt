@@ -52,7 +52,7 @@ add_library(anvil_materials STATIC materials/texture.cpp)
 target_link_libraries(anvil_materials PUBLIC anvil_formats anvil_render)
 
 # World: BSP -> mesh/lightmap atlas (CPU), map loading, material logic. Draws through render::Device only.
-add_library(anvil_world STATIC world/worldmesh.cpp world/world.cpp)
+add_library(anvil_world STATIC world/worldmesh.cpp world/visibility.cpp world/world.cpp)
 target_link_libraries(anvil_world PUBLIC anvil_formats anvil_render anvil_materials anvil_filesystem)
 
 # Developer UI (Dear ImGui). Internal tooling only, never the game's VGUI. OFF = no dependency, no-op API.

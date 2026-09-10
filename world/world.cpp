@@ -71,7 +71,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
 
   const Mesh mesh = buildMesh(w->map_);
   ANVIL_INFO("world", "%s: %zu faces, %zu displacements, %zu vertices, %zu triangles, lightmap atlas %ux%u",
-             path.c_str(), mesh.faces, mesh.displacements, mesh.vertices.size(), mesh.indices.size() / 3,
+             path.c_str(), mesh.polygons, mesh.displacements, mesh.vertices.size(), mesh.indices.size() / 3,
              mesh.lightmap.desc.width, mesh.lightmap.desc.height);
   if (mesh.badLightmaps) ANVIL_WARN("world", "%zu faces with out-of-range lightmaps drawn unlit", mesh.badLightmaps);
 
@@ -91,6 +91,8 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
     }
   }
   w->setupMaterials(mesh);
+  w->faces_ = mesh.faces;
+  w->visibility_ = std::make_unique<Visibility>(w->map_, w->faces_);
   ANVIL_INFO("world", "%s: %zu materials, %zu textures, %zu missing", path.c_str(), mesh.batches.size(),
              w->textures_.size(), w->missing_);
   return w;
@@ -140,8 +142,6 @@ void World::setupMaterials(const Mesh& mesh) {
     const std::string& name = map_.texdataNames[size_t(map_.texdatas[size_t(b.texdata)].nameStringTableId)];
     const std::string path = "materials/" + lower(name) + ".vmt";
     render::Draw3D d;
-    d.firstIndex = b.firstIndex;
-    d.indexCount = b.indexCount;
     d.lightmap = lightmap_;
     d.colorScale = 2.0f; // lightmap atlas stores shade / 2 (see world::Mesh::lightmap)
     std::string err = "not found";
@@ -151,7 +151,7 @@ void World::setupMaterials(const Mesh& mesh) {
       ANVIL_WARN("world", "Material %s: %s", path.c_str(), err.c_str());
       ++missing_;
       d.texture = error_;
-      draws_.push_back(d);
+      materials_.push_back({d, b.firstFace, b.faceCount});
       continue;
     }
     const std::string shader = lower(m->shader);
@@ -176,14 +176,40 @@ void World::setupMaterials(const Mesh& mesh) {
       const std::string ref(m->get("$alphatestreference", "0.5"));
       d.alphaRef = std::strtof(ref.c_str(), nullptr);
     }
-    draws_.push_back(d);
+    materials_.push_back({d, b.firstFace, b.faceCount});
   }
-  std::stable_partition(draws_.begin(), draws_.end(),
-                        [](const render::Draw3D& d) { return d.blend != render::Blend::Translucent; });
+  std::stable_partition(materials_.begin(), materials_.end(),
+                        [](const Material& m) { return m.draw.blend != render::Blend::Translucent; });
 }
 
-void World::draw(const Camera& camera, float aspect) const {
-  if (device_ && mesh_) device_->draw3d(mesh_, viewProjection(camera, aspect), draws_);
+void World::draw(const Camera& camera, float aspect, bool usePvs) {
+  const render::Mat4 viewProj = viewProjection(camera, aspect);
+  visibility_->compute(map_, faces_, camera.origin, viewProj, usePvs, visible_, stats_);
+  // Visible faces of a material -> index ranges; neighbours in the index buffer merge into one draw.
+  frameDraws_.clear();
+  stats_.submittedFaces = stats_.triangles = 0;
+  for (const Material& m : materials_) {
+    bool open = false; // frameDraws_.back() belongs to this material and may be extended
+    for (uint32_t i = m.firstFace; i < m.firstFace + m.faceCount; ++i) {
+      if (!visible_[i]) {
+        open = false;
+        continue;
+      }
+      const MeshFace& f = faces_[i];
+      if (open) {
+        frameDraws_.back().indexCount += f.indexCount;
+      } else {
+        frameDraws_.push_back(m.draw);
+        frameDraws_.back().firstIndex = f.firstIndex;
+        frameDraws_.back().indexCount = f.indexCount;
+        open = true;
+      }
+      ++stats_.submittedFaces;
+      stats_.triangles += f.indexCount / 3;
+    }
+  }
+  stats_.draws = frameDraws_.size();
+  if (device_ && mesh_) device_->draw3d(mesh_, viewProj, frameDraws_);
 }
 
 Camera World::spawnPoint() const {

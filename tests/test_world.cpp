@@ -2,6 +2,7 @@
 // (CPU), then renders d1_trainstation_01 headless (skipped without Vulkan). ANVIL_WORLD_SHOT=<file.bmp> saves it.
 #include "filesystem/filesystem.h"
 #include "filesystem/gameinfo.h"
+#include "world/visibility.h"
 #include "world/world.h"
 #include "world/worldmesh.h"
 #include "check.h"
@@ -54,6 +55,78 @@ bsp::Map syntheticMap() {
   m.dispInfos = {d};
   for (int i = 0; i < 25; ++i) m.dispVerts.push_back({{0, 0, 1}, float(i), 0});
   return m;
+}
+
+// Two clusters split by the plane x = 128: face A (x 0..64) in cluster 0, face B (x 200..264) and displacement C
+// (x 210..250, not in any leaf face list) in cluster 1. Cluster 0 sees only itself; cluster 1 sees both.
+bsp::Map visMap() {
+  bsp::Map m;
+  for (float x0 : {0.0f, 200.0f, 210.0f}) {
+    const float x1 = x0 == 210 ? 250 : x0 + 64, y1 = x0 == 210 ? 40 : 64;
+    for (bsp::Vec3 v : {bsp::Vec3{x0, 0, 0}, {x1, 0, 0}, {x1, y1, 0}, {x0, y1, 0}}) m.vertices.push_back(v);
+  }
+  m.edges.push_back({{0, 0}});
+  for (uint16_t q = 0; q < 3; ++q)
+    for (uint16_t k = 0; k < 4; ++k) {
+      m.edges.push_back({{uint16_t(q * 4 + k), uint16_t(q * 4 + (k + 1) % 4)}});
+      m.surfedges.push_back(int32_t(m.edges.size() - 1));
+    }
+  m.planes = {{{0, 0, 1}, 0, 2}, {{1, 0, 0}, 128, 0}};
+  m.texdataNames = {"DEV/A"};
+  m.texdatas = {{{}, 0, 64, 64, 64, 64}};
+  m.texinfos = {{{{1, 0, 0, 0}, {0, 1, 0, 0}}, {{1 / 16.0f, 0, 0, 0}, {0, 1 / 16.0f, 0, 0}}, 0, 0}};
+  for (int q = 0; q < 3; ++q) {
+    bsp::Face f{};
+    f.firstedge = q * 4;
+    f.numedges = 4;
+    f.dispinfo = q == 2 ? 0 : -1;
+    f.lightofs = -1;
+    m.faces.push_back(f);
+  }
+  m.models = {{{}, {}, {}, 0, 0, 3}};
+  m.nodes = {{1, {-2, -1}, {}, {}, 0, 0, 0, 0}}; // front (x >= 128) = leaf 1, back = leaf 0
+  bsp::Leaf leaf{};
+  leaf.numLeafFaces = 1;
+  m.leafs = {leaf, leaf};
+  m.leafs[1].cluster = 1;
+  m.leafs[1].firstLeafFace = 1;
+  m.leafFaces = {0, 1};
+  m.numClusters = 2;
+  m.visData = std::string(20, '\0') + "\x01\x03";
+  m.pvsOffsets = {20, 21};
+  bsp::DispInfo d{};
+  d.startPosition = {210, 0, 0};
+  d.power = 2;
+  d.mapFace = 2;
+  m.dispInfos = {d};
+  m.dispVerts.assign(25, {{0, 0, 1}, 0, 0});
+  return m;
+}
+
+void visibilityTests() {
+  const bsp::Map map = visMap();
+  const world::Mesh mesh = world::buildMesh(map);
+  CHECK(mesh.faces.size() == 3);
+  if (mesh.faces.size() != 3) return;
+  world::Visibility vis(map, mesh.faces);
+  std::vector<uint8_t> visible;
+  world::VisStats s;
+  auto run = [&](bsp::Vec3 eye, float pitch, float yaw, bool usePvs) {
+    const world::Camera cam{eye, pitch, yaw};
+    vis.compute(map, mesh.faces, eye, world::viewProjection(cam, 1.0f), usePvs, visible, s);
+  };
+  run({32, 32, 50}, 45, 0, true); // cluster 0, looking down onto A: B and C hidden by the PVS
+  CHECK(s.cluster == 0 && s.faces == 3 && s.pvsFaces == 1 && s.frustumFaces == 1 && visible[0] && !visible[1]);
+  run({230, 32, 50}, 89, 0, true); // cluster 1 sees both clusters; looking straight down: A outside the frustum
+  CHECK(s.cluster == 1 && s.pvsFaces == 3 && s.frustumFaces == 2 && !visible[0] && visible[1] && visible[2]);
+  run({32, 32, 50}, 0, 0, false); // PVS off: everything passes it; A is below the view, B and C ahead
+  CHECK(s.cluster == -1 && s.pvsFaces == 3 && s.frustumFaces == 2 && !visible[0] && visible[2]);
+  run({300, 32, 50}, 0, 0, true); // everything behind the camera
+  CHECK(s.pvsFaces == 3 && s.frustumFaces == 0);
+  // Frustum box test in isolation: a box straddling the view axis is inside, one behind the eye is not.
+  const world::Frustum f = world::frustumFromViewProj(world::viewProjection({}, 1.0f));
+  CHECK(!world::boxOutside(f, {90, -5, -5}, {110, 5, 5}) && world::boxOutside(f, {-50, -5, -5}, {-10, 5, 5}));
+  CHECK(!world::boxOutside(f, {-10, -5, -5}, {10, 5, 5})); // contains the eye
 }
 
 const uint8_t* atlasTexel(const world::Mesh& mesh, float lu, float lv) {
@@ -127,10 +200,31 @@ int realData(const std::filesystem::path& modDir) {
   CHECK(w != nullptr);
   if (w) {
     const float clear[4] = {1, 0, 1, 1};
-    CHECK(device->beginFrame(clear));
-    w->draw(w->spawnPoint(), 1280.0f / 720.0f);
-    device->endFrame();
-    const auto px = device->readPixels();
+    auto render = [&](const world::Camera& cam, bool usePvs) {
+      CHECK(device->beginFrame(clear));
+      w->draw(cam, 1280.0f / 720.0f, usePvs);
+      device->endFrame();
+      return device->readPixels();
+    };
+    // PVS culling must be conservative: it removes only hidden faces, so the image does not change.
+    std::vector<uint8_t> px;
+    for (float yaw : {0.0f, 90.0f, 180.0f, 270.0f}) {
+      world::Camera cam = w->spawnPoint();
+      cam.yaw += yaw;
+      const auto all = render(cam, false); // frustum culling only
+      const size_t frustumOnly = w->stats().submittedFaces;
+      px = render(cam, true);
+      const world::DrawStats& s = w->stats();
+      size_t differ = 0;
+      for (size_t i = 0; i + 3 < px.size() && px.size() == all.size(); i += 4)
+        differ += std::memcmp(&px[i], &all[i], 3) != 0;
+      std::printf("spawn yaw +%3.0f: cluster %d, %zu faces, PVS %zu, frustum %zu, submitted %zu (%zu triangles, "
+                  "%zu draws); frustum only %zu; PVS on/off differing pixels %zu\n", yaw, s.cluster, s.faces,
+                  s.pvsFaces, s.frustumFaces, s.submittedFaces, s.triangles, s.draws, frustumOnly, differ);
+      CHECK(s.cluster >= 0 && s.pvsFaces < s.faces && s.frustumFaces <= s.pvsFaces && s.submittedFaces <= s.frustumFaces);
+      CHECK(px.size() == all.size() && differ == 0);
+    }
+    px = render(w->spawnPoint(), true);
     size_t covered = 0;
     for (size_t i = 0; i + 3 < px.size(); i += 4) covered += !(px[i] == 255 && px[i + 1] == 0 && px[i + 2] == 255);
     std::printf("d1_trainstation_01: %.1f%% of pixels drawn\n", 100.0 * double(covered) / double(1280 * 720));
@@ -157,12 +251,19 @@ int main(int argc, char** argv) {
 
   const bsp::Map map = syntheticMap();
   const world::Mesh mesh = world::buildMesh(map);
-  CHECK(mesh.faces == 2 && mesh.displacements == 1 && mesh.badLightmaps == 1);
+  CHECK(mesh.polygons == 2 && mesh.displacements == 1 && mesh.badLightmaps == 1);
+  CHECK(mesh.faces.size() == 3);
+  if (mesh.faces.size() == 3) {
+    CHECK(mesh.faces[0].face == 0 && mesh.faces[1].face == 3 && mesh.faces[2].face == 2); // texdata order
+    CHECK(mesh.faces[2].firstIndex == 12 && mesh.faces[2].indexCount == 96);
+    CHECK(near(mesh.faces[2].maxs.z, 24) && near(mesh.faces[2].mins.x, 0) && near(mesh.faces[0].maxs.x, 64));
+  }
   // Batches by texdata: quads (texdata 0), then the displacement (texdata 2); nodraw skipped.
   CHECK(mesh.batches.size() == 2);
   if (mesh.batches.size() == 2) {
     CHECK(mesh.batches[0].texdata == 0 && mesh.batches[0].firstIndex == 0 && mesh.batches[0].indexCount == 12);
     CHECK(mesh.batches[1].texdata == 2 && mesh.batches[1].firstIndex == 12 && mesh.batches[1].indexCount == 4 * 4 * 6);
+    CHECK(mesh.batches[0].firstFace == 0 && mesh.batches[0].faceCount == 2 && mesh.batches[1].firstFace == 2);
   }
   CHECK(mesh.vertices.size() == 4 + 4 + 25 && mesh.indices.size() == 12 + 96);
   for (uint32_t i : mesh.indices) CHECK(i < mesh.vertices.size());
@@ -205,5 +306,6 @@ int main(int argc, char** argv) {
   cam.pitch = 90; // looking straight down
   clip(cam, {10, 0, -20}, c);
   CHECK(near(c[0], 0) && near(c[1], 0) && near(c[3], 20));
+  visibilityTests();
   return TEST_RESULT();
 }

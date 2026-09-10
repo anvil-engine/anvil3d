@@ -79,6 +79,13 @@ int main(int argc, char** argv) {
   }, "Load maps/<name>.bsp and render it");
   const Console::Var& fpsMax = console.addVar("fps_max", "300", "Frame rate limit, 0 = unlimited");
   const Console::Var& sensitivity = console.addVar("sensitivity", "3", "Mouse look speed");
+  const Console::Var& novis = console.addVar("r_novis", "0", "1 = ignore the PVS (frustum culling only)");
+  console.addCommand("r_worldstats", [&](const Console::Args&) {
+    if (!level) return ANVIL_WARN("console", "r_worldstats: no map loaded");
+    const world::DrawStats& s = level->stats();
+    ANVIL_INFO("world", "cluster %d: %zu faces, %zu in PVS, %zu in frustum, %zu submitted (%zu triangles, %zu draws)",
+               s.cluster, s.faces, s.pvsFaces, s.frustumFaces, s.submittedFaces, s.triangles, s.draws);
+  }, "Print last frame's world visibility counters");
   Clock clock;
   console.addVar("host_timescale", "1.0", "Simulation speed multiplier",
                  [&](const Console::Var& v) { clock.timescale = v.asFloat(); });
@@ -147,7 +154,7 @@ int main(int argc, char** argv) {
       uint32_t lw = 0, lh = 0, pw = 0, ph = 0;
       window->logicalSize(lw, lh);
       device->targetSize(pw, ph);
-      if (level && ph) level->draw(camera, float(pw) / float(ph));
+      if (level && ph) level->draw(camera, float(pw) / float(ph), !novis.asBool());
       if (devuiOn && lw) devui::frame(float(lw), float(lh), float(pw) / float(lw), float(dt));
       device->endFrame();
     }

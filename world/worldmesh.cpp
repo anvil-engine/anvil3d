@@ -135,8 +135,9 @@ Mesh buildMesh(const bsp::Map& map) {
     };
 
     if (out.batches.empty() || out.batches.back().texdata != ti.texdata)
-      out.batches.push_back({ti.texdata, uint32_t(out.indices.size()), 0});
+      out.batches.push_back({ti.texdata, uint32_t(out.indices.size()), 0, uint32_t(out.faces.size()), 0});
     const auto base = uint32_t(out.vertices.size());
+    const auto firstIndex = uint32_t(out.indices.size());
     bsp::faceVertices(map, f, poly);
     if (f.dispinfo >= 0) {
       // Grid of (2^power + 1)^2 vertices over the base quad, starting at the corner nearest startPosition.
@@ -176,9 +177,19 @@ Mesh buildMesh(const bsp::Map& map) {
       for (const bsp::Vec3& p : poly) emit(p, p);
       for (uint32_t i = 1; i + 1 < poly.size(); ++i) // faces are convex: fan
         out.indices.insert(out.indices.end(), {base, base + i, base + i + 1});
-      ++out.faces;
+      ++out.polygons;
     }
-    out.batches.back().indexCount = uint32_t(out.indices.size()) - out.batches.back().firstIndex;
+    MeshFace mf{uint32_t(faces[k]), firstIndex, uint32_t(out.indices.size()) - firstIndex, {FLT_MAX, FLT_MAX, FLT_MAX},
+                {-FLT_MAX, -FLT_MAX, -FLT_MAX}};
+    for (size_t v = base; v < out.vertices.size(); ++v) {
+      const render::Vertex3D& p = out.vertices[v];
+      mf.mins = {std::min(mf.mins.x, p.x), std::min(mf.mins.y, p.y), std::min(mf.mins.z, p.z)};
+      mf.maxs = {std::max(mf.maxs.x, p.x), std::max(mf.maxs.y, p.y), std::max(mf.maxs.z, p.z)};
+    }
+    out.faces.push_back(mf);
+    Batch& batch = out.batches.back();
+    batch.indexCount = uint32_t(out.indices.size()) - batch.firstIndex;
+    ++batch.faceCount;
   }
   return out;
 }

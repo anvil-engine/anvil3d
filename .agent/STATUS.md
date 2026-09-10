@@ -23,6 +23,7 @@ Milestone: M3 Renderer — in progress. First visual milestone reached: `+map d1
 - render: TextureFormat RGBA8/BC1/BC2/BC3, mip chains, clamp/repeat samplers; DeviceOptions::forceUncompressedTextures. VMA for all Vulkan memory.
 - render: 3D path — static meshes (Vertex3D: pos, uv, lightmap uv), Draw3D = texture * lightmap * scale (Opaque/AlphaTest/Translucent), depth buffer (reverse Z), column-major viewProj with y-up clip space.
 - world/: BSP -> world::Mesh (fan-triangulated faces, displacement grids, texture + lightmap UVs, shelf-packed RGBA8 lightmap atlas), grouped per material. World: loads maps/<name>.bsp, mounts pakfile {GAME,BSP} at head, resolves VMT -> VTF -> device textures (missing = magenta checker), LightmappedGeneric-style drawing. All 78 HL2 maps build (CPU); d1_trainstation_01 renders headless and windowed (`world_hl2`, 0 missing assets).
+- world/visibility: per-frame PVS (camera leaf -> cluster -> decompressed PVS) + frustum (face bounds vs 5 planes) -> visible faces merged into per-material index ranges. Displacements (never in leaf face lists in HL2) get clusters from their bounds pushed down the node tree. Counters: faces / PVS / frustum / submitted / triangles / draws (`r_worldstats`); `r_novis 1` = frustum only. d1_trainstation_01 spawn: 6678 faces -> 1352 PVS -> 126..643 submitted over 4 view directions; images identical with PVS on/off (`world_hl2`).
 - engine: `map <name>` command; `anvil.cfg` + `+commands` run after renderer init; free camera (RMB look, WASD, Space/Ctrl, Shift), `sensitivity` cvar; platform input (keys by SDL name, mouse buttons, relative motion).
 - engine: renders every frame (clear + world + devui); flags -norender, -novsync, -vkdebug.
 - Tests: cmdline, keyvalues, filesystem, console(+clock), interfaces (real module load), smoke (tests/data/testgame).
@@ -31,7 +32,7 @@ Milestone: M3 Renderer — in progress. First visual milestone reached: `+map d1
 - gameinfo implicit rules (auto gamebin, _<language> dirs, low-violence game_lv) not applied.
 - cvar flags (cheat/archive), config.cfg saving, autocomplete, in-game console UI.
 - Simulation ticks computed but nothing consumes them.
-- World render gaps (logged STUB/PARTIAL at runtime): Water/Refract surfaces not drawn; WorldVertexTransition draws $basetexture only; other shaders drawn as LightmappedGeneric; no sky; brush entities (models *1..) not drawn; static props, decals, overlays not drawn; lightmap style 0 + flat samples only (no bump, no switchable lights); translucent draws unsorted; no PVS/frustum culling; RGBA16161616F textures clamped to RGBA8 (WARN).
+- World render gaps (logged STUB/PARTIAL at runtime): Water/Refract surfaces not drawn; WorldVertexTransition draws $basetexture only; other shaders drawn as LightmappedGeneric; no sky; brush entities (models *1..) not drawn; static props, decals, overlays not drawn; lightmap style 0 + flat samples only (no bump, no switchable lights); translucent draws unsorted; RGBA16161616F textures clamped to RGBA8 (WARN).
 
 ## Known broken
 - none
