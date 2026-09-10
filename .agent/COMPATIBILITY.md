@@ -10,7 +10,7 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 | Filesystem  | PARTIAL     | NOT STARTED | NOT STARTED |
 | Console     | PARTIAL     | NOT STARTED | NOT STARTED |
 | VPK         | WORKING     | UNKNOWN     | UNKNOWN     |
-| BSP         | PARTIAL     | NOT STARTED | NOT STARTED |
+| BSP         | PARTIAL (parse; no brushes/areaportals/water/overlays/cubemaps) | NOT STARTED | NOT STARTED |
 | Materials   | PARTIAL     | NOT STARTED | NOT STARTED |
 | Models      | PARTIAL     | NOT STARTED | NOT STARTED |
 | Physics     | NOT STARTED | NOT STARTED | NOT STARTED |

@@ -17,4 +17,12 @@
 5. [x] VTF header + mip/format table (DXT1/3/5, BGRA8888, BGR888, etc.) + test.
 6. [x] VMT: shader + params, DX9/HDR fallback blocks, `cond?$param`, patch shader.
 7. [x] MDL/VVD/VTX: LOD0 default body -> vertices + per-mesh triangles, materials, skins.
-8. [ ] BSP: nodes/leafs/visibility, displacements, game lump (static props), pakfile (zip) lump.
+8. [x] BSP: nodes/leafs/visibility, displacements, game lump (static props), pakfile (zip) lump.
+
+## M3 (in order)
+1. [ ] render::2d + render device API (textures, buffers, shaders, capabilities); first backend.
+2. [ ] VTF decode/upload (DXT1/3/5, BGR(A)888x, RGBA16F, UV88); material -> texture binding.
+3. [ ] World mesh builder: faces -> polygons, displacement grids, lightmap atlas; LightmappedGeneric/WorldVertexTransition basics.
+4. [ ] Static props via studio loader; skybox (sky shader, 2D skybox camera later).
+5. [ ] PVS/frustum culling; `map <name>` command mounts pakfile, loads BSP, renders.
+6. [ ] devui draws through render::2d.
