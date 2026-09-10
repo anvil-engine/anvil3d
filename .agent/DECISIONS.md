@@ -111,3 +111,7 @@ IMPACT: World shaders must output gamma-space color (or render to a linear HDR t
 DECISION: Vulkan lifetime model = frame serials + fence-derived completedSerial_ (invariants in render/vulkan/device.cpp header comment). Headless frames are serialized (shared offscreen target). Swapchain recreated only at frame begin after device idle; OUT_OF_DATE/SUBOPTIMAL set a dirty flag; surface format picked by fixed preference (B8G8R8A8_UNORM, R8G8B8A8_UNORM) and a change rebuilds render pass + pipeline. Failed submit = device lost (stop rendering).
 REASON: External review sync pass: make GPU completion explicit, fix headless WAR/WAW on the shared target, avoid fence deadlock.
 IMPACT: Verified with Khronos validation + synchronization validation on llvmpipe (headless + Xvfb swapchain resize): zero messages. Presentation-engine release of old swapchain images relies on device idle (swapchain_maintenance1 not used).
+
+DECISION: Vulkan memory via VMA v3.4.0 (MIT), pinned by URL + SHA256; implementation in render/vulkan/vma.cpp; entry points from volk (VMA_DYNAMIC_VULKAN_FUNCTIONS=1, STATIC=0).
+REASON: Approved in review. Per-resource vkAllocateMemory would hit maxMemoryAllocationCount (often 4096) with world geometry and textures; VMA is the standard, tested sub-allocator.
+IMPACT: VMA types stay inside render/vulkan/device.cpp. Host-visible allocations are flushed/invalidated explicitly (non-coherent memory safe).

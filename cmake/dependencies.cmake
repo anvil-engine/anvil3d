@@ -27,7 +27,16 @@ if(ANVIL_VULKAN)
     URL_HASH SHA256=6400c7b23e24d17e4f04bac49b55b06c4e87677d33398e90344743ec73560ca6
     DOWNLOAD_EXTRACT_TIMESTAMP ON
     SOURCE_SUBDIR none) # populate only; volk.c is compiled below
-  FetchContent_MakeAvailable(vulkan_headers volk)
+  FetchContent_Declare(vma
+    URL https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/archive/refs/tags/v3.4.0.tar.gz
+    URL_HASH SHA256=822aa850c6ce77346ae96a8a1d351d52e77e85929f35363849a0a4e638e0a2a1
+    DOWNLOAD_EXTRACT_TIMESTAMP ON
+    SOURCE_SUBDIR none) # header-only; implementation compiled in render/vulkan/vma.cpp
+  FetchContent_MakeAvailable(vulkan_headers volk vma)
+  add_library(vma INTERFACE)
+  target_include_directories(vma SYSTEM INTERFACE ${vma_SOURCE_DIR}/include)
+  # volk provides the entry points: no static prototypes, VMA fetches what it needs via vkGet*ProcAddr.
+  target_compile_definitions(vma INTERFACE VMA_STATIC_VULKAN_FUNCTIONS=0 VMA_DYNAMIC_VULKAN_FUNCTIONS=1)
   add_library(volk STATIC ${volk_SOURCE_DIR}/volk.c)
   target_include_directories(volk SYSTEM PUBLIC ${volk_SOURCE_DIR})
   target_link_libraries(volk PUBLIC Vulkan::Headers)
