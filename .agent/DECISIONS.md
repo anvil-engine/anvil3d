@@ -63,3 +63,11 @@ IMPACT: Add handle cache if file-open cost appears in load-time profiles.
 DECISION: VTF cubemaps before 7.5 have 7 faces (extra spheremap) unless firstFrame == 0xFFFF; 7.5 has 6.
 REASON: Public VTF docs; exact file-size validation passes on all 5237 HL2 textures with this rule.
 IMPACT: Renderer uses faces 0-5 only.
+
+DECISION: Materials resolve as dxlevel 95, HDR on, sRGB-capable PC: apply `>=dx90*`, `<shader>_dx9/_dx90`, then `<shader>_hdr_dx9`; ignore `<dx90*` and dx6-dx8 blocks; `srgb?` true, `360?`/`lowfill?` false.
+REASON: Matches what a modern PC runs HL2 as; survey of all 5304 HL2 VMTs shows only these block/condition forms.
+IMPACT: Options::hdr=false for an LDR path. Unknown conditions log DEBUG and count as false.
+
+DECISION: `patch` shader: insert and replace both overwrite-or-add.
+REASON: Simplest behavior that covers map pakfile cubemap patches.
+IMPACT: If a game relies on replace skipping absent keys, split the two.
