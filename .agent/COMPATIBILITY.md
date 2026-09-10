@@ -9,7 +9,7 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 | Gameinfo    | PARTIAL     | UNKNOWN     | UNKNOWN     |
 | Filesystem  | PARTIAL     | NOT STARTED | NOT STARTED |
 | Console     | PARTIAL     | NOT STARTED | NOT STARTED |
-| VPK         | NOT STARTED | NOT STARTED | NOT STARTED |
+| VPK         | WORKING     | UNKNOWN     | UNKNOWN     |
 | BSP         | NOT STARTED | NOT STARTED | NOT STARTED |
 | Materials   | NOT STARTED | NOT STARTED | NOT STARTED |
 | Models      | NOT STARTED | NOT STARTED | NOT STARTED |

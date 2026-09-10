@@ -51,3 +51,11 @@ IMPACT: Server DLL tick interval overrides once game modules load.
 DECISION: Engine config = `anvil.cfg` in working directory, executed before `+commands`.
 REASON: Engine settings are not game data; command line must win.
 IMPACT: None.
+
+DECISION: VPK CRC mismatch logs WARN and still returns data.
+REASON: Retail HL2 (build 19307283) has one entry (sound/vo/novaprospekt/al_pickherup.wav) whose stored CRC mismatches structurally valid data; Source does not reject such reads.
+IMPACT: Real corruption is not blocked at read time; vpk_hl2 test reports mismatches as warnings.
+
+DECISION: VPK part files are opened per read (no handle cache); archive MD5/signature sections ignored.
+REASON: Simplest thread-safe design; integrity sections are for distribution tooling, not runtime.
+IMPACT: Add handle cache if file-open cost appears in load-time profiles.

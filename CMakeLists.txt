@@ -20,7 +20,7 @@ target_include_directories(anvil_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 add_library(anvil_platform STATIC platform/window.cpp platform/module.cpp)
 target_link_libraries(anvil_platform PUBLIC anvil_common PRIVATE SDL3::SDL3)
 
-add_library(anvil_filesystem STATIC filesystem/filesystem.cpp filesystem/gameinfo.cpp)
+add_library(anvil_filesystem STATIC filesystem/filesystem.cpp filesystem/gameinfo.cpp filesystem/vpk.cpp)
 target_link_libraries(anvil_filesystem PUBLIC anvil_common)
 
 add_library(anvil_engine STATIC engine/console.cpp compat/interfaces.cpp)
@@ -31,13 +31,19 @@ target_link_libraries(anvil PRIVATE anvil_engine)
 target_compile_definitions(anvil PRIVATE ANVIL_VERSION="${PROJECT_VERSION}")
 
 enable_testing()
-foreach(name cmdline keyvalues filesystem console interfaces)
+foreach(name cmdline keyvalues filesystem vpk console interfaces)
   add_executable(test_${name} tests/test_${name}.cpp)
   target_link_libraries(test_${name} PRIVATE anvil_engine)
 endforeach()
-foreach(name cmdline keyvalues filesystem console)
+foreach(name cmdline keyvalues filesystem vpk console)
   add_test(NAME ${name} COMMAND test_${name})
 endforeach()
+
+# Opt-in: -DANVIL_HL2_DIR=<Half-Life 2 install> reads every VPK entry of a real install (not shipped).
+if(ANVIL_HL2_DIR)
+  file(GLOB ANVIL_HL2_VPKS "${ANVIL_HL2_DIR}/hl2/*_dir.vpk" "${ANVIL_HL2_DIR}/platform/*_dir.vpk")
+  add_test(NAME vpk_hl2 COMMAND test_vpk ${ANVIL_HL2_VPKS})
+endif()
 
 # Stand-in game module; hidden visibility so only the explicitly exported CreateInterface is visible.
 add_library(test_module_lib MODULE tests/test_module_lib.cpp)

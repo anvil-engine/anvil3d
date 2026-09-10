@@ -27,8 +27,9 @@ struct GameInfo {
 std::optional<GameInfo> parseGameInfo(std::string_view text, const std::filesystem::path& baseDir,
                                       const std::filesystem::path& gameinfoDir, std::string* error = nullptr);
 
-// Adds directory search paths to fs. "dir/*" mounts every subdirectory of dir in alphabetical order.
-// Returns the number of entries it could not mount (VPKs until M2, missing directories).
+// Adds directory and VPK search paths to fs. "x.vpk" opens "x_dir.vpk" (or "x.vpk" if single-file).
+// "dir/*" mounts every subdirectory and VPK in dir, alphabetically.
+// Returns the number of entries it could not mount (missing or malformed).
 int mountGameInfo(FileSystem& fs, const GameInfo& info);
 
 } // namespace anvil

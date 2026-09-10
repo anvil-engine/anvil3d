@@ -5,6 +5,7 @@
 #include "common/strutil.h"
 
 #include <algorithm>
+#include <regex>
 
 namespace fs = std::filesystem;
 
@@ -71,8 +72,23 @@ int mountGameInfo(FileSystem& fsys, const GameInfo& info) {
   auto mountDir = [&](const fs::path& dir, const std::vector<std::string>& ids) {
     std::error_code ec;
     if (dir.extension() == ".vpk") {
-      ANVIL_WARN("fs", "VPK mounting not implemented, skipped: %s", dir.string().c_str());
-      ++failed;
+      // gameinfo names "foo.vpk"; multi-part archives are stored as "foo_dir.vpk" + "foo_NNN.vpk".
+      fs::path file = dir.parent_path() / (dir.stem().string() + "_dir.vpk");
+      if (!fs::exists(file, ec)) file = dir;
+      if (!fs::exists(file, ec)) {
+        ANVIL_DEBUG("fs", "VPK missing, skipped: %s", dir.string().c_str());
+        ++failed;
+        return;
+      }
+      std::string err;
+      auto vpk = VpkArchive::open(file, &err);
+      if (!vpk) {
+        ANVIL_ERROR("fs", "Bad VPK %s: %s", file.string().c_str(), err.c_str());
+        ++failed;
+        return;
+      }
+      ANVIL_DEBUG("fs", "Mounted %s (%zu files)", file.string().c_str(), vpk->fileCount());
+      fsys.addVpk(std::move(vpk), ids);
     } else if (fs::is_directory(dir, ec)) {
       fsys.addSearchPath(dir, ids);
       ANVIL_DEBUG("fs", "Mounted %s", dir.string().c_str());
@@ -90,7 +106,11 @@ int mountGameInfo(FileSystem& fsys, const GameInfo& info) {
     std::vector<fs::path> entries;
     std::error_code ec;
     for (fs::directory_iterator it(sp.path.parent_path(), ec), last; !ec && it != last; it.increment(ec)) {
-      if (it->is_directory(ec) || it->path().extension() == ".vpk") entries.push_back(it->path());
+      // Wildcard dirs hold loose folders and VPKs; skip _NNN data parts, they are opened via their _dir file.
+      static const std::regex vpkPart(R"(.*_\d{3}\.vpk)", std::regex::icase);
+      const std::string name = it->path().filename().string();
+      if (it->is_directory(ec) || (it->path().extension() == ".vpk" && !std::regex_match(name, vpkPart)))
+        entries.push_back(it->path());
     }
     std::sort(entries.begin(), entries.end());
     for (const fs::path& entry : entries) mountDir(entry, sp.ids);
