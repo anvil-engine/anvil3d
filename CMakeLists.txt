@@ -111,7 +111,7 @@ if(ANVIL_HL2_DIR)
   add_test(NAME source_inspection_hl2 COMMAND anvil -basedir "${ANVIL_HL2_DIR}" -game hl2 -norender -frames 3
     +map d1_trainstation_01 +vgui_menu +vgui_panel resource/newgamedialog.res 600 296 +weapon_scripts)
   set_tests_properties(source_inspection_hl2 PROPERTIES ENVIRONMENT SDL_VIDEO_DRIVER=dummy
-    PASS_REGULAR_EXPRESSION "Original control Play: Button/Button;Loaded 18/18 original weapon scripts"
+    PASS_REGULAR_EXPRESSION "Original control Play: Button/Button;Loaded 18/18 original weapon scripts;Sampled [1-9][0-9]* original frame poses"
     FAIL_REGULAR_EXPRESSION "Independent combat;practice objects;DIAGNOSTIC")
   add_test(NAME vgui_hl2 COMMAND test_vgui "${ANVIL_HL2_DIR}")
   add_test(NAME gameplay_hl2 COMMAND test_gameplay "${ANVIL_HL2_DIR}")

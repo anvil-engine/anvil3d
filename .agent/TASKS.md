@@ -22,6 +22,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
   - [x] Parse local MDL sequence/activity metadata and resolve it for 17 installed HL2 viewmodels.
   - [x] Parse bounded MDL bind-pose bone names, parents, positions and quaternions.
   - [x] Parse local animation metadata and sequence blend indices; preserve include-model references for later resolution.
+  - [x] Decode bounded integer-frame inline MDL raw/RLE bone channels; validate 4690 installed viewmodel frame poses.
 - [ ] Execute authored skeletal animation; model poses/recoil must not be substituted on the game path.
 - [ ] Instantiate authored entities and generic delayed I/O (no map-specific event chains).
 - [ ] Original sound resources/scripts and audio playback.

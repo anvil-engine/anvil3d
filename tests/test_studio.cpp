@@ -78,6 +78,8 @@ Buf makeMdl() {
   m.set(1204, int32_t(-1));
   m.set(1232, 1.0f);
   m.set(1244 + 12, 1.0f); // quaternion w
+  m.set(1272,0.5f);
+  m.set(1284,0.01f);
   m.set(1360, uint32_t(0x100));
   m.str(1420, "root");
   m.set(1454,int32_t(1570-1450));
@@ -85,9 +87,17 @@ Buf makeMdl() {
   m.set(1462,int32_t(1));
   m.set(1466,int32_t(10));
   m.set(1502,int32_t(0));
-  m.set(1506,int32_t(80));
+  m.set(1506,int32_t(200));
   m.set(1100,int16_t(0));
   m.str(1570,"idle_anim");
+  m.set(1650,uint8_t(0));
+  m.set(1651,uint8_t(0x21)); // RAWROT2 | RAWPOS
+  m.set(1652,int16_t(0));
+  const uint64_t identity=uint64_t(1048576)|(uint64_t(1048576)<<21)|(uint64_t(1048576)<<42);
+  m.set(1654,identity);
+  m.set(1662,uint16_t(0x3c00));
+  m.set(1664,uint16_t(0x4000));
+  m.set(1666,uint16_t(0x4200));
   return m;
 }
 
@@ -196,6 +206,14 @@ int main(int argc, char** argv) {
           m->sequences[0].animations.size()==1&&m->sequences[0].animations[0]==0);
     CHECK(m->bones.size()==1&&m->bones[0].name=="root"&&m->bones[0].parent==-1&&
           m->bones[0].position[0]==1.0f&&m->bones[0].rotation[3]==1.0f);
+    const auto pose=studio::sampleAnimation(*m,mdl.d,0,0,&err);
+    CHECK(pose&&pose->size()==1&&(*pose)[0].position[0]==1.0f&&(*pose)[0].position[1]==2.0f&&
+          (*pose)[0].position[2]==3.0f&&(*pose)[0].rotation[3]>0.999f);
+    CHECK(!studio::sampleAnimation(*m,mdl.d,0,10,&err));
+    CHECK(!studio::sampleAnimation(*m,mdl.d.substr(0,1662),0,0,&err));
+    std::string emptyAnimation=mdl.d;emptyAnimation[1650]=char(255);
+    const auto bindPose=studio::sampleAnimation(*m,emptyAnimation,0,0,&err);
+    CHECK(bindPose&&(*bindPose)[0].position[0]==1.0f&&(*bindPose)[0].position[1]==0.0f);
     CHECK(m->materialDirs.size() == 1 && m->materialDirs[0] == "models/test/");
     CHECK(m->vertices.size() == 4 && m->vertices[2].pos[0] == 10 && m->vertices[2].pos[1] == 10);
     CHECK(m->meshes.size() == 1);
@@ -228,7 +246,7 @@ int main(int argc, char** argv) {
   // The strip header's last 8 bytes (bone state changes) are not needed, so truncation there still loads.
   for (size_t cut = 0; cut < vtx.d.size() - 8; cut += 5) CHECK(!studio::load(mdl.d, vvd.d, vtx.d.substr(0, cut), &err));
   for (size_t cut = 0; cut < vvd.d.size(); cut += 11) CHECK(!studio::load(mdl.d, vvd.d.substr(0, cut), vtx.d, &err));
-  for (size_t cut = 0; cut < mdl.d.size(); cut += 13) CHECK(!studio::load(mdl.d.substr(0, cut), vvd.d, vtx.d, &err));
+  for (size_t cut = 0; cut < 1579; cut += 13) CHECK(!studio::load(mdl.d.substr(0, cut), vvd.d, vtx.d, &err));
 
   return TEST_RESULT();
 }

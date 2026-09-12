@@ -283,7 +283,7 @@ int main(int argc, char** argv) {
     if (!manifestText) return ANVIL_ERROR("weapon","Missing scripts/weapon_manifest.txt");
     const auto files=weapon::parseManifest(*manifestText,&error);
     if (!files) return ANVIL_ERROR("weapon","Invalid manifest: %s",error.c_str());
-    size_t loaded=0,missingModels=0,viewModels=0,sequences=0,bones=0,animations=0,frames=0;
+    size_t loaded=0,missingModels=0,viewModels=0,sequences=0,bones=0,animations=0,frames=0,sampled=0,unsupportedSamples=0;
     for (const auto& path:*files) {
       const auto normalized=normalizePath(path);
       const auto text=normalized?fsys.readFile(*normalized,"GAME"):std::nullopt;
@@ -307,7 +307,17 @@ int main(int argc, char** argv) {
         const auto model=mdl&&vvd&&vtx?studio::load(*mdl,*vvd,*vtx,&error):std::nullopt;
         if (model) {
           ++viewModels;sequences+=model->sequences.size();bones+=model->bones.size();animations+=model->animations.size();
-          for (const auto& animation:model->animations) frames+=size_t(animation.frames);
+          for (size_t i=0;i<model->animations.size();++i) {
+            const auto& animation=model->animations[i];frames+=size_t(animation.frames);
+            for (int frame=0;frame<animation.frames;++frame) {
+              if (studio::sampleAnimation(*model,*mdl,i,frame,&error)) { ++sampled;continue; }
+              if (error=="external animation block is unsupported"||error=="sectioned animation is unsupported"||
+                  error=="animation has no inline frame data") ++unsupportedSamples;
+              else ANVIL_WARN("weapon","Invalid animation %s/%s frame %d: %s",
+                               script->viewModel.c_str(),animation.name.c_str(),frame,error.c_str());
+              break;
+            }
+          }
         }
         else ANVIL_WARN("weapon","Viewmodel metadata unavailable for %s%s%s",script->viewModel.c_str(),
                         error.empty()?"":": ",error.c_str());
@@ -316,6 +326,8 @@ int main(int argc, char** argv) {
     }
     ANVIL_INFO("weapon","Loaded %zu/%zu original weapon scripts; %zu viewmodels with %zu bones, %zu sequences and %zu animations/%zu frames; %zu referenced models missing",
                loaded,files->size(),viewModels,bones,sequences,animations,frames,missingModels);
+    ANVIL_INFO("weapon","Sampled %zu original frame poses; %zu animations require unsupported external/sectioned data",
+               sampled,unsupportedSamples);
     ANVIL_WARN("weapon","Script data only; weapon behavior and viewmodel animation are not implemented");
   }, "Load original scripts/weapon_manifest.txt and referenced WeaponData files");
   Clock clock;

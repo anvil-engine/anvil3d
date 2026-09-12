@@ -42,6 +42,8 @@ struct Animation {
   int32_t frames = 0;
   int32_t block = 0;
   int32_t dataOffset = 0;
+  int32_t sectionOffset = 0;
+  int32_t sectionFrames = 0;
 };
 
 struct Bone {
@@ -49,8 +51,13 @@ struct Bone {
   int32_t parent = -1;
   float position[3] = {};
   float rotation[4] = {};
+  float euler[3] = {};
+  float positionScale[3] = {};
+  float rotationScale[3] = {};
   uint32_t flags = 0;
 };
+
+struct BonePose { float position[3] = {}, rotation[4] = {}; };
 
 struct Model {
   int32_t version = 0;
@@ -74,5 +81,7 @@ struct Model {
 // The three files of one model. vtx is normally "<name>.dx90.vtx".
 std::optional<Model> load(std::string_view mdl, std::string_view vvd, std::string_view vtx,
                           std::string* error = nullptr);
+std::optional<std::vector<BonePose>> sampleAnimation(const Model& model,std::string_view mdl,
+                                                     size_t animation,int frame,std::string* error=nullptr);
 
 } // namespace anvil::studio

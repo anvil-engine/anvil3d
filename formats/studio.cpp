@@ -2,6 +2,9 @@
 
 #include "common/bytes.h"
 
+#include <algorithm>
+#include <bit>
+#include <cmath>
 #include <cstring>
 
 namespace anvil::studio {
@@ -54,6 +57,9 @@ struct Loader {
           !rd(mdl,rec+4,bone.parent,"bone out of range")||
           !rd(mdl,rec+32,bone.position,"bone out of range")||
           !rd(mdl,rec+44,bone.rotation,"bone out of range")||
+          !rd(mdl,rec+60,bone.euler,"bone out of range")||
+          !rd(mdl,rec+72,bone.positionScale,"bone out of range")||
+          !rd(mdl,rec+84,bone.rotationScale,"bone out of range")||
           !rd(mdl,rec+160,bone.flags,"bone out of range")||
           !readCString(mdl,rec+nameOffset,name)) return fail("bone name out of range");
       if (bone.parent < -1 || bone.parent >= numBones) return fail("bone parent out of range");
@@ -76,8 +82,15 @@ struct Loader {
           !rd(mdl,rec+16,animation.frames,"animation out of range")||
           !rd(mdl,rec+52,animation.block,"animation out of range")||
           !rd(mdl,rec+56,animation.dataOffset,"animation out of range")||
+          !rd(mdl,rec+80,animation.sectionOffset,"animation out of range")||
+          !rd(mdl,rec+84,animation.sectionFrames,"animation out of range")||
           !readCString(mdl,rec+nameOffset,name)) return fail("animation name out of range");
       if (animation.frames<0||animation.frames>kMaxCount||animation.block<0) return fail("invalid animation metadata");
+      if (!animation.block&&animation.dataOffset>0) {
+        const int64_t absolute=rec+animation.dataOffset;
+        if (absolute>INT32_MAX) return fail("animation data offset out of range");
+        animation.dataOffset=int32_t(absolute);
+      }
       animation.name=name;
       m.animations.push_back(std::move(animation));
     }
@@ -297,6 +310,99 @@ int Model::materialFor(const Mesh& mesh, size_t family) const {
   if (skins.empty()) return -1;
   const auto& row = skins[family < skins.size() ? family : 0];
   return size_t(mesh.skinRef) < row.size() ? row[size_t(mesh.skinRef)] : -1;
+}
+
+std::optional<std::vector<BonePose>> sampleAnimation(const Model& model,std::string_view mdl,
+                                                     size_t animationIndex,int frame,std::string* error) {
+  auto fail=[&](const char* reason)->std::optional<std::vector<BonePose>> { if(error)*error=reason;return {}; };
+  if (animationIndex>=model.animations.size()) return fail("animation index out of range");
+  const Animation& animation=model.animations[animationIndex];
+  if (animation.block) return fail("external animation block is unsupported");
+  if (animation.sectionOffset||animation.sectionFrames) return fail("sectioned animation is unsupported");
+  if (animation.frames<=0||frame<0||frame>=animation.frames) return fail("animation frame out of range");
+  if (animation.dataOffset<=0) return fail("animation has no inline frame data");
+
+  std::vector<BonePose> pose(model.bones.size());
+  for (size_t i=0;i<model.bones.size();++i) {
+    std::copy_n(model.bones[i].position,3,pose[i].position);
+    std::copy_n(model.bones[i].rotation,4,pose[i].rotation);
+  }
+  auto half=[](uint16_t h) {
+    const uint32_t sign=uint32_t(h&0x8000)<<16,exp=(h>>10)&31,mantissa=h&1023;
+    uint32_t bits=0;
+    if (!exp) {
+      if (!mantissa) bits=sign;
+      else { uint32_t m=mantissa,e=113;while(!(m&1024)){m<<=1;--e;}bits=sign|(e<<23)|((m&1023)<<13); }
+    } else if (exp==31) bits=sign|0x7f800000|(mantissa<<13);
+    else bits=sign|((exp+112)<<23)|(mantissa<<13);
+    return std::bit_cast<float>(bits);
+  };
+  auto valueAt=[&](int64_t ptr,int component,int sample,int16_t& value) {
+    int16_t offset=0;
+    if (!readAt(mdl,ptr+component*2,offset)) return false;
+    if (!offset) { value=0;return true; }
+    if (offset<0) return false;
+    int64_t cursor=ptr+offset;
+    for (int runs=0;runs<65536;++runs) {
+      uint8_t valid=0,total=0;
+      if (!readAt(mdl,cursor,valid)||!readAt(mdl,cursor+1,total)||!total||valid>total) return false;
+      if (sample<total) {
+        if (!valid) { value=0;return true; }
+        return readAt(mdl,cursor+2+int64_t(std::min(sample,int(valid)-1))*2,value);
+      }
+      sample-=total;cursor+=2+int64_t(valid)*2;
+    }
+    return false;
+  };
+  auto quaternion=[](const float angle[3],float out[4]) {
+    const float sx=std::sin(angle[0]*.5f),cx=std::cos(angle[0]*.5f);
+    const float sy=std::sin(angle[1]*.5f),cy=std::cos(angle[1]*.5f);
+    const float sz=std::sin(angle[2]*.5f),cz=std::cos(angle[2]*.5f);
+    out[0]=sx*cy*cz-cx*sy*sz;out[1]=cx*sy*cz+sx*cy*sz;
+    out[2]=cx*cy*sz-sx*sy*cz;out[3]=cx*cy*cz+sx*sy*sz;
+  };
+
+  int64_t rec=animation.dataOffset;
+  for (size_t records=0;records<=model.bones.size();++records) {
+    uint8_t boneIndex=0,flags=0;int16_t next=0;
+    if (!readAt(mdl,rec,boneIndex)||!readAt(mdl,rec+1,flags)||!readAt(mdl,rec+2,next))
+      return fail("animation record out of range");
+    if (boneIndex==255) return pose;
+    if (boneIndex>=model.bones.size()) return fail("animation bone out of range");
+    const Bone& bone=model.bones[boneIndex];BonePose& out=pose[boneIndex];
+    const bool delta=flags&0x10;
+    if (delta) { std::fill_n(out.position,3,0.0f);out.rotation[0]=out.rotation[1]=out.rotation[2]=0;out.rotation[3]=1; }
+    int64_t data=rec+4;
+    if (flags&0x02) {
+      uint16_t x=0,y=0,z=0;
+      if(!readAt(mdl,data,x)||!readAt(mdl,data+2,y)||!readAt(mdl,data+4,z)) return fail("raw quaternion out of range");
+      out.rotation[0]=(int(x)-32768)/32768.0f;out.rotation[1]=(int(y)-32768)/32768.0f;
+      out.rotation[2]=(int(z&0x7fff)-16384)/16384.0f;
+      out.rotation[3]=std::sqrt(std::max(0.0f,1-out.rotation[0]*out.rotation[0]-out.rotation[1]*out.rotation[1]-out.rotation[2]*out.rotation[2]));
+      if(z&0x8000) out.rotation[3]=-out.rotation[3];data+=6;
+    } else if (flags&0x20) {
+      uint64_t q=0;if(!readAt(mdl,data,q)) return fail("raw quaternion out of range");
+      out.rotation[0]=(int(q&0x1fffff)-1048576)/1048576.5f;
+      out.rotation[1]=(int((q>>21)&0x1fffff)-1048576)/1048576.5f;
+      out.rotation[2]=(int((q>>42)&0x1fffff)-1048576)/1048576.5f;
+      out.rotation[3]=std::sqrt(std::max(0.0f,1-out.rotation[0]*out.rotation[0]-out.rotation[1]*out.rotation[1]-out.rotation[2]*out.rotation[2]));
+      if(q>>63) out.rotation[3]=-out.rotation[3];data+=8;
+    } else if (flags&0x08) {
+      float angle[3];
+      for(int i=0;i<3;++i){int16_t v=0;if(!valueAt(rec+4,i,frame,v))return fail("rotation stream out of range");angle[i]=(delta?0:bone.euler[i])+v*bone.rotationScale[i];}
+      quaternion(angle,out.rotation);
+    }
+    if (flags&0x01) {
+      for(int i=0;i<3;++i){uint16_t h=0;if(!readAt(mdl,data+i*2,h))return fail("raw position out of range");out.position[i]=half(h);}
+    } else if (flags&0x04) {
+      const int64_t ptr=rec+4+((flags&0x08)?6:0);
+      for(int i=0;i<3;++i){int16_t v=0;if(!valueAt(ptr,i,frame,v))return fail("position stream out of range");out.position[i]=(delta?0:bone.position[i])+v*bone.positionScale[i];}
+    }
+    if (!next) return pose;
+    if (next<4) return fail("invalid animation record chain");
+    rec+=next;
+  }
+  return fail("animation record chain exceeds bone count");
 }
 
 std::optional<Model> load(std::string_view mdl, std::string_view vvd, std::string_view vtx, std::string* error) {
