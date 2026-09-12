@@ -144,6 +144,9 @@ bool Window::keyDown(const char* name) const {
   return code != SDL_SCANCODE_UNKNOWN && int(code) < count && keys[code];
 }
 
+bool Window::focused() const { return SDL_GetKeyboardFocus() == window_; }
+void Window::mousePosition(float& x, float& y) const { SDL_GetMouseState(&x, &y); }
+
 bool Window::mouseDown(int button) const {
   const int sdl[4] = {0, SDL_BUTTON_LEFT, SDL_BUTTON_RIGHT, SDL_BUTTON_MIDDLE};
   return button >= 1 && button <= 3 && (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_MASK(sdl[button]));

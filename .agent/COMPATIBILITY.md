@@ -10,13 +10,13 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 | Filesystem  | PARTIAL     | NOT STARTED | NOT STARTED |
 | Console     | PARTIAL     | NOT STARTED | NOT STARTED |
 | VPK         | WORKING     | UNKNOWN     | UNKNOWN     |
-| BSP         | PARTIAL (parse; no brushes/areaportals/water/overlays/cubemaps) | NOT STARTED | NOT STARTED |
+| BSP         | PARTIAL (parse incl. brushes; no areaportals/water/overlays/cubemaps) | NOT STARTED | NOT STARTED |
 | Materials   | PARTIAL     | NOT STARTED | NOT STARTED |
 | Textures    | PARTIAL (VTF->GPU; no frames/cubemaps/HDR) | NOT STARTED | NOT STARTED |
 | World render | PARTIAL (brush world, LightmappedGeneric-style, lightmaps, displacements, PVS/frustum, 2D sky, static brush entities, WVT blend, static props with ambient-only light; no 3D sky/water/decals/overlays) | NOT STARTED | NOT STARTED |
 | Models      | PARTIAL     | NOT STARTED | NOT STARTED |
-| Physics     | NOT STARTED | NOT STARTED | NOT STARTED |
-| VGUI        | NOT STARTED | NOT STARTED | NOT STARTED |
+| Physics     | PARTIAL (Jolt walking, static BSP collision; PHY props unsupported; triangle approximation diagnostic only) | NOT STARTED | NOT STARTED |
+| VGUI        | PARTIAL (resources/localization, scheme colors/font candidate selection; no rasterization/panels/command execution) | NOT STARTED | NOT STARTED |
 | Client DLL  | NOT STARTED | NOT STARTED | NOT STARTED |
 | Server DLL  | NOT STARTED | NOT STARTED | NOT STARTED |
 | Audio       | NOT STARTED | NOT STARTED | NOT STARTED |
@@ -34,3 +34,13 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 - Static props: placement and materials PARTIAL; lighting is a per-prop leaf-ambient approximation (no direct light, no VHV), not verified against Source output; fade = hard cull at fademaxdist.
 - Brush entity placement: origin-relative models verified on HL2 data; angle rotation (esp. roll sign) UNVERIFIED; no entity render modes.
 - Shader behavior (LightmappedGeneric, UnlitGeneric, sky, fallbacks for other shaders): anvil interpretation, not verified against Source output.
+
+- Independent Jolt player: 32x32x72 rounded box, 64-unit eye, 600 units/s² gravity, 190/320 walk/run, 265 jump impulse, 18-unit stairs. Gameplay tuning, not SDK movement/prediction compatibility. No crouch, water, ladders, moving platforms or entity simulation yet.
+- Collision brushside dispinfo is unused metadata: all 22741 brushsides in trainstation_01 store zero, including non-displacement sides; maps without a displacement lump also store zero. Face.dispinfo remains the validated displacement reference. Static prop render triangles approximate collision and can differ from Source PHY hulls.
+
+- Independent menu/HUD/combat/targets are restricted to explicit `-diagnosticplay`; they are not Source compatibility and are absent from normal map inspection. Authored GameMenu entries are inspected through `vgui_menu`, not substituted with the diagnostic UI.
+- VGUI resource lookup uses all authored search paths in order, including PLATFORM (required by the installed SourceScheme.res -> SourceSchemeBase.res reference). Relative #base inheritance fills missing keys; #include appends root peers. Broader branch behavior remains unverified.
+- Scheme interpretation preserves fallback order and all authored font attributes; inclusive yres and Unicode range filtering accepts numbered and direct face definitions observed in installed content. RGB[A] and Colors/BaseSettings aliases resolve with explicit errors for missing/invalid/cyclic values. CustomFontFiles paths are collected, not registered with a font backend. Proportional scaling, glyph fallback/rasterization, bitmap fonts, borders and panel behavior remain unsupported.
+- KeyValues escaping is opt-in for localization (quotes/backslashes/newline/return/tab); other consumers preserve literal backslashes. Empty blocks are distinguished from empty strings for base inheritance.
+
+- Normal collision loading omits unsupported static-prop PHY shapes with a warning. Render-triangle substitutes are enabled only on the explicit diagnostic path.

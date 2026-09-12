@@ -1,6 +1,6 @@
 # Building
 
-Requires CMake 3.20+, a C++20 compiler (MSVC 2022, GCC 11+, Clang 14+), and SDL3 development files.
+Requires CMake 3.20+, a C++20 compiler (MSVC 2022, GCC 12+, Clang 16+), and SDL3 development files.
 
 ```
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -23,3 +23,5 @@ Vulkan (default renderer):
 Options:
 - `-DANVIL_DEVUI=ON` builds the developer overlay (Dear ImGui, downloaded at configure time). Run with `-devui`.
 - `-DANVIL_HL2_DIR=<Half-Life 2 install>` enables tests over your own game files.
+
+Physics: Jolt 5.6.0 is fetched and built automatically (CPU only). No separately installed physics SDK is required.

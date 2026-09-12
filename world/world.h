@@ -59,6 +59,11 @@ public:
   const std::string& skyName() const { return skyName_; } // worldspawn skyname as resolved ("" = no sky)
   size_t brushEntityCount() const { return entities_.size(); } // with drawable faces
   size_t staticPropCount() const { return props_.size(); }     // with drawable meshes
+  // World-owned model resources, reused by independent gameplay objects and first-person weapons.
+  // 0 = failed load; handles expire with the World. Bounds refer to the model's bind pose.
+  uint32_t loadModel(std::string_view name);
+  bool modelBounds(uint32_t model, bsp::Vec3& mins, bsp::Vec3& maxs) const;
+  void drawModel(uint32_t model, const render::Mat4& mvp, float tint = 1.0f);
 
 private:
   World(FileSystem& fs, render::Device* device) : fs_(fs), device_(device) {}
@@ -120,6 +125,13 @@ private:
   DrawStats stats_;
   size_t missing_ = 0;
   std::string skyName_;
+  struct ModelAsset {
+    render::MeshHandle mesh = 0;
+    bsp::Vec3 mins{}, maxs{};
+    std::vector<render::Draw3D> draws;
+  };
+  std::vector<ModelAsset> modelAssets_;
+  std::unordered_map<std::string, uint32_t> modelHandles_;
 };
 
 } // namespace anvil::world

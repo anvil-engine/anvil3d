@@ -1,5 +1,22 @@
 # Tasks
 
+## Active direction: execute original Source content (2026-09-12)
+User direction supersedes the earlier independent combat/menu prototype. Do not recreate game menus, HUDs, animations, sounds or map progression. Renderer implementation may be modern and independent. Diagnostic replacements must be opt-in and explicitly identified.
+
+- [x] Jolt Runtime/Scene, validated BSP brushes and initial walking/collision foundation (PARTIAL movement semantics).
+- [x] Isolate independent combat/menu/HUD/targets behind `-diagnosticplay`; default content inspection spawns none of these.
+- [x] Original VGUI resource loading through ordered VFS, including PLATFORM; relative #base/#include, UTF-16 localization and opt-in KeyValues escapes.
+- [x] Interpret GameMenu.res labels, commands and observed visibility/order flags from original data. Console diagnostics only.
+- [x] Interpret scheme color aliases and font candidate ranges/order, preserving original font attributes and custom font file paths. Font face loading, rasterization and proportional sizing remain next steps.
+- [ ] Instantiate/render original VGUI panels, schemes and fonts; execute supported menu commands through real mechanisms, report unsupported commands.
+- [ ] Load weapon scripts and original viewmodel sequences/animations; independent diagnostic weapons do not satisfy Source weapon compatibility.
+- [ ] Execute authored skeletal animation; model poses/recoil must not be substituted on the game path.
+- [ ] Instantiate authored entities and generic delayed I/O (no map-specific event chains).
+- [ ] Original sound resources/scripts and audio playback.
+- [ ] PHY collision, entity physics/parenting, Source movement semantics, triggers and progression driven by map data.
+- [ ] Resolve game module/ABI path for original game-specific behavior; the retail mac i386 modules cannot load into this arm64 runtime.
+- [ ] Modern renderer features remain a separate track; named algorithms require actual implementations and configuration.
+
 ## M1 leftovers
 - [ ] Verify build on Windows (MSVC 2022, vcpkg SDL3).
 

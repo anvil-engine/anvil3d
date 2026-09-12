@@ -163,3 +163,25 @@ IMPACT: Linear blend only; $blendmodulatetexture (post-HL2) and $basetexturetran
 DECISION: Static props = one shared prop mesh (all prop models' LOD 0) + per-instance Draw3D lists drawn through draw3d with viewProj * transform; lighting = Draw3D::tint from the nearest per-leaf ambient sample (average of its 6 cube faces, gamma 2.2), sampled at the lighting origin when flag 0x2 is set, else the bounds centre, else the origin; fade flag 0x1 + fademaxdist = hard distance cull; v6 min/max dx level checked against dxlevel 95.
 REASON: Smallest useful path that reuses the world material/texture cache and render path. Leaf ambient lumps (51/52/55/56, 28-byte samples) are present in all 76 v20 HL2 maps; a sample is found for 98.3% of 18545 props with the fallback chain.
 IMPACT: No direct/sun light, no per-vertex (VHV) lighting, no normals used: props render flat and darker than Source (PARTIAL, logged). Flag meanings (0x1 fades, 0x2 lighting origin) are from public format notes, not verified against Source behavior. v19 maps (ambient inside leafs) get neutral grey.
+
+DECISION: User goal prioritizes playable HL2 (WASD + Jolt + guns) over remaining renderer polish. Implement an independent local gameplay foundation while retail module integration remains unresolved.
+REASON: Useful movement/physics can be built and verified with owned HL2 assets on arm64 macOS. This does not supply HL2 campaign/game-DLL compatibility.
+IMPACT: physics::Runtime explicitly owns Jolt's required process-global Factory/type registration and Trace callback (documented third-party exception to the no-global rule); Scenes die before Runtime. Jolt types stay in physics.cpp. One metre = 1/0.0254 map units; Z up retained. Single-threaded job system initially.
+
+DECISION: Collision world derives from BSP brushes, not the render mesh; clip each plane polygon against the other planes and give the resulting vertices to Jolt's convex hull builder. Traverse each model's headnode with visited sets; include solid/window/grate/playerclip, exclude triggers and illusionary/areaportal entities. Displacements and solid static props supply triangle collision.
+REASON: Render geometry omits invisible solid and playerclip surfaces. Separating collision from visibility/materials prevents holes caused by renderer filtering.
+IMPACT: playerclip blocks the character but is excluded from shots and dynamic-body contacts. Static brush placement, render-triangle prop collision and movement parameters are PARTIAL. Max 128 brush sides bounds clipping cost; rejected shapes are counted/logged. Exact PHY shapes, collision groups and entity-driven state remain future work.
+
+DECISION: The 2026-09-12 original-content directive supersedes the earlier local combat/menu milestone. Retain the independent test rig only behind -diagnosticplay with explicit diagnostic labels; do not use it to claim HL2 gameplay or UI compatibility.
+REASON: User requires execution of existing Source content and behavior, not recreated output. Modern rendering remains an independent engine capability.
+IMPACT: Default map inspection keeps asset-driven rendering and Jolt collision but adds no practice objects, substitute weapons, HUD or menu. Implement original VGUI resources first, then panels/fonts and real command behavior. No source game code is copied.
+
+DECISION: VGUI resource loading reuses the existing KeyValues parser and ordered VFS. All mounted path IDs participate, so a GAME .res can inherit a PLATFORM scheme. Escape handling is enabled only for localization consumers.
+REASON: Real HL2 SourceScheme.res references SourceSchemeBase.res under PLATFORM; gameui localization is UTF-16 and contains escaped text.
+IMPACT: Resource-only support is marked PARTIAL. Schemes and panel descriptors are loaded without drawing substitute layouts. Includes have cycle/depth/total-input limits and reject paths escaping the VFS root; localization overlays are applied only after successful parsing.
+
+DECISION: Normal map inspection does not replace unavailable Source PHY shapes with render triangles.
+REASON: The original-content directive prohibits substituting authored game data merely to hide a compatibility gap.
+IMPACT: Missing static-prop PHY collision is logged and omitted. Triangle collision remains available only in explicitly enabled diagnostics; implement the real PHY format next for those props.
+# VGUI scheme interpretation (2026-09-12)
+Reuse the VGUI resource loader and KeyValues tree to resolve Colors/BaseSettings references and filter original font variants. Return authored nodes in fallback order rather than inventing font metrics or substituting a font. Real SourceSchemeBase contains both numbered font variants and direct face definitions; support both generically. Actual glyph availability, proportional sizing, rendering and borders are separate remaining work. The diagnostic command exposes authored candidates and explicitly reports that font execution is unsupported.

@@ -87,6 +87,23 @@ struct Node {
   int16_t padding;
 };
 
+struct Brush {
+  int32_t firstSide, numSides;
+  int32_t contents;
+};
+
+struct BrushSide {
+  uint16_t plane;
+  int16_t texinfo, dispinfo, bevel; // dispinfo retained as raw metadata; retail HL2 zero-fills it
+};
+
+enum Contents : int32_t {
+  CONTENTS_SOLID = 0x1,
+  CONTENTS_WINDOW = 0x2,
+  CONTENTS_GRATE = 0x8,
+  CONTENTS_PLAYERCLIP = 0x10000,
+};
+
 // Normalized leaf (on disk: 32 bytes in lump version 1, 56 with ambient cube in version 0).
 struct Leaf {
   int32_t contents;
@@ -164,6 +181,9 @@ struct Map {
   std::vector<Node> nodes;               // [0] = root
   std::vector<Leaf> leafs;
   std::vector<uint16_t> leafFaces;       // leaf -> face indices
+  std::vector<uint16_t> leafBrushes;
+  std::vector<Brush> brushes;
+  std::vector<BrushSide> brushSides;
   int32_t numClusters = 0;
   std::string visData;                   // raw visibility lump; use pvs()
   std::vector<int32_t> pvsOffsets;       // per cluster, into visData
@@ -195,6 +215,9 @@ enum Lump {
   LUMP_SURFEDGES = 13,
   LUMP_MODELS = 14,
   LUMP_LEAFFACES = 16,
+  LUMP_LEAFBRUSHES = 17,
+  LUMP_BRUSHES = 18,
+  LUMP_BRUSHSIDES = 19,
   LUMP_DISPINFO = 26,
   LUMP_DISP_VERTS = 33,
   LUMP_LEAF_AMBIENT_INDEX_HDR = 51,

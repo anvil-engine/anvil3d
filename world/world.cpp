@@ -114,8 +114,55 @@ World::~World() {
     device_->destroyMesh(mesh_);
     device_->destroyMesh(skyMesh_);
     device_->destroyMesh(propMesh_);
+    for (const auto& model : modelAssets_) device_->destroyMesh(model.mesh);
   }
   if (pak_) fs_.removeArchive(pak_);
+}
+
+uint32_t World::loadModel(std::string_view name) {
+  const std::string key = lower(name);
+  if (auto found = modelHandles_.find(key); found != modelHandles_.end()) return found->second;
+  const auto geometry = loadPropGeometry(fs_, {key});
+  if (geometry.models.empty() || !geometry.models[0].loaded) return 0;
+  const auto& model = geometry.models[0];
+  ModelAsset asset;
+  asset.mins = model.mins;
+  asset.maxs = model.maxs;
+  if (device_) asset.mesh = device_->createMesh(geometry.vertices, geometry.indices);
+  if (device_ && !asset.mesh) return 0;
+  for (size_t i = 0; i < model.meshes.size(); ++i) {
+    const int mat = model.info.materialFor(model.info.meshes[i], 0);
+    if (mat < 0 || size_t(mat) >= model.info.materials.size()) continue;
+    std::string path;
+    for (const auto& dir : model.info.materialDirs) {
+      auto candidate = lower("materials/" + dir + model.info.materials[size_t(mat)] + ".vmt");
+      std::replace(candidate.begin(), candidate.end(), '\\', '/');
+      if (path.empty()) path = candidate;
+      if (fs_.exists(candidate, "GAME")) { path = candidate; break; }
+    }
+    auto draw = material(path, true);
+    if (!draw) continue;
+    draw->firstIndex = model.meshes[i].firstIndex;
+    draw->indexCount = model.meshes[i].indexCount;
+    asset.draws.push_back(*draw);
+  }
+  modelAssets_.push_back(std::move(asset));
+  const auto handle = uint32_t(modelAssets_.size());
+  modelHandles_[key] = handle;
+  return handle;
+}
+
+bool World::modelBounds(uint32_t model, bsp::Vec3& mins, bsp::Vec3& maxs) const {
+  if (!model || model > modelAssets_.size()) return false;
+  mins = modelAssets_[model - 1].mins; maxs = modelAssets_[model - 1].maxs;
+  return true;
+}
+
+void World::drawModel(uint32_t model, const render::Mat4& mvp, float tint) {
+  if (!device_ || !model || model > modelAssets_.size()) return;
+  auto& asset = modelAssets_[model - 1];
+  for (auto& draw : asset.draws) std::fill(std::begin(draw.tint), std::end(draw.tint), tint);
+  device_->draw3d(asset.mesh, mvp, asset.draws);
 }
 
 render::TextureHandle World::texture(std::string_view name) {

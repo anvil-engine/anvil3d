@@ -270,11 +270,26 @@ bool validate(const Map& m, std::string& error) {
         size_t(n.firstface) + n.numfaces > m.faces.size())
       return bad("node " + std::to_string(i) + " out of range");
   }
+  static_assert(sizeof(Brush) == 12 && sizeof(BrushSide) == 8);
+  for (const Brush& b : m.brushes)
+    if (b.firstSide < 0 || b.numSides < 0 || uint64_t(b.firstSide) + uint64_t(b.numSides) > m.brushSides.size())
+      return bad("brush sides out of range");
+  for (const BrushSide& s : m.brushSides) {
+    if (s.plane >= m.planes.size()) return bad("brushside plane out of range");
+    if (s.texinfo != -1 && (s.texinfo < 0 || size_t(s.texinfo) >= m.texinfos.size()))
+      return bad("brushside texinfo out of range");
+    // Retail HL2 leaves brushside dispinfo zero even with no displacement lump.
+    // It is retained as raw metadata, never used as an index; faces own displacement references.
+  }
+  for (uint16_t b : m.leafBrushes)
+    if (b >= m.brushes.size()) return bad("leafbrush out of range");
   for (uint16_t f : m.leafFaces)
     if (f >= m.faces.size()) return bad("leafface out of range");
   std::vector<uint8_t> scratch;
   for (size_t i = 0; i < m.leafs.size(); ++i) {
     const Leaf& l = m.leafs[i];
+    if (size_t(l.firstLeafBrush) + l.numLeafBrushes > m.leafBrushes.size())
+      return bad("leaf brushes out of range");
     if (size_t(l.firstLeafFace) + l.numLeafFaces > m.leafFaces.size())
       return bad("leaf " + std::to_string(i) + " faces out of range");
     if (l.cluster < -1 || (m.numClusters > 0 && l.cluster >= m.numClusters))
@@ -327,6 +342,8 @@ std::optional<Map> load(std::string_view file, std::string* error) {
   if (ok && map.faces.empty()) ok = p.array(LUMP_FACES_HDR, map.faces);
   if (ok && lighting.empty()) ok = p.raw(LUMP_LIGHTING_HDR, lighting);
   ok = ok && p.array(LUMP_NODES, map.nodes) && parseLeafs(p, map) && p.array(LUMP_LEAFFACES, map.leafFaces) &&
+       p.array(LUMP_LEAFBRUSHES, map.leafBrushes) && p.array(LUMP_BRUSHES, map.brushes) &&
+       p.array(LUMP_BRUSHSIDES, map.brushSides) &&
        parseVis(p, map) && parseDisp(p, map) && parseStaticProps(p, map) &&
        p.array(LUMP_LEAF_AMBIENT_INDEX, map.leafAmbient) && p.array(LUMP_LEAF_AMBIENT_LIGHTING, map.ambientSamples);
   // HDR-only maps: take both ambient lumps from the HDR set so index and samples match.

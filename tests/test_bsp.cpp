@@ -147,6 +147,34 @@ int main(int argc, char** argv) {
     return TEST_RESULT();
   }
 
+  // Collision lumps: valid layouts plus malformed cross-references and truncated records.
+  {
+    BspBuilder collision;
+    collision.add(bsp::LUMP_BRUSHES,bsp::Brush{0,1,bsp::CONTENTS_SOLID});
+    collision.add(bsp::LUMP_BRUSHSIDES,bsp::BrushSide{0,0,0,0});
+    collision.add(bsp::LUMP_LEAFBRUSHES,uint16_t(0));
+    uint16_t count=1;
+    std::memcpy(collision.lumps[bsp::LUMP_LEAFS].data()+26,&count,2);
+    CHECK(bsp::load(collision.build()));
+    // brushside.dispinfo is zero-filled metadata in retail maps, even with no displacement lump.
+    auto noDisplacement=collision;
+    noDisplacement.lumps[bsp::LUMP_DISPINFO].clear();
+    noDisplacement.lumps[bsp::LUMP_DISP_VERTS].clear();
+    const int16_t none=-1;
+    std::memcpy(noDisplacement.lumps[bsp::LUMP_FACES].data()+12,&none,2);
+    CHECK(bsp::load(noDisplacement.build()));
+    auto invalid=collision;
+    invalid.lumps[bsp::LUMP_BRUSHSIDES].pop_back(); CHECK(!bsp::load(invalid.build()));
+    invalid=collision;
+    invalid.lumps[bsp::LUMP_BRUSHES].clear(); CHECK(!bsp::load(invalid.build()));
+    invalid=collision;
+    invalid.lumps[bsp::LUMP_BRUSHSIDES].clear(); CHECK(!bsp::load(invalid.build()));
+    invalid=collision;
+    uint16_t bad=999;
+    std::memcpy(invalid.lumps[bsp::LUMP_BRUSHSIDES].data(),&bad,2); CHECK(!bsp::load(invalid.build()));
+    invalid=collision;
+    std::memcpy(invalid.lumps[bsp::LUMP_LEAFS].data()+26,&bad,2); CHECK(!bsp::load(invalid.build()));
+  }
   BspBuilder b;
   std::string err;
   auto map = bsp::load(b.build(), &err);

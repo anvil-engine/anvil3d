@@ -68,6 +68,7 @@ enum class Tok { End, String, Open, Close, Condition };
 struct Lexer {
   std::string_view text;
   size_t pos = 0;
+  bool escapes = false;
   int line = 1;
   std::string error;
 
@@ -89,6 +90,28 @@ struct Lexer {
     const char c = text[pos];
     if (c == '{') return ++pos, Tok::Open;
     if (c == '}') return ++pos, Tok::Close;
+    if (c == '"' && escapes) {
+      ++pos;
+      while (pos < text.size()) {
+        char ch = text[pos++];
+        if (ch == '"') return Tok::String;
+        if (ch == '\n') ++line;
+        if (ch == '\\') {
+          if (pos == text.size()) break;
+          ch = text[pos++];
+          switch (ch) {
+          case 'n': ch = '\n'; break;
+          case 'r': ch = '\r'; break;
+          case 't': ch = '\t'; break;
+          case '\\': case '"': break;
+          default: out += '\\'; break; // preserve unknown escapes instead of silently losing data
+          }
+        }
+        out += ch;
+      }
+      error = "unterminated escaped string";
+      return Tok::End;
+    }
     if (c == '"' || c == '[') {
       const char close = c == '"' ? '"' : ']';
       const size_t end = text.find(close, pos + 1);
@@ -142,6 +165,7 @@ bool parseBlock(Lexer& lex, std::vector<KeyValues>& out, int depth) {
       t = lex.next(tok);
     }
     if (t == Tok::Open) {
+      kv.block = true;
       if (!parseBlock(lex, kv.children, depth + 1)) return false;
     } else if (t == Tok::String) {
       kv.value = tok;
@@ -159,12 +183,14 @@ bool parseBlock(Lexer& lex, std::vector<KeyValues>& out, int depth) {
 
 } // namespace
 
-std::optional<KeyValues> parseKeyValues(std::string_view text, std::string* error) {
+std::optional<KeyValues> parseKeyValues(std::string_view text, std::string* error, bool escapes) {
   // UTF-8 BOM appears in hand-edited resource files.
   if (text.substr(0, 3) == "\xEF\xBB\xBF") text.remove_prefix(3);
   Lexer lex;
   lex.text = text;
+  lex.escapes = escapes;
   KeyValues root;
+  root.block = true;
   if (!parseBlock(lex, root.children, 0)) {
     if (error) *error = "line " + std::to_string(lex.line) + ": " + lex.error;
     return std::nullopt;

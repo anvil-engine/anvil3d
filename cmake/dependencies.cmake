@@ -4,6 +4,23 @@ include(FetchContent)
 
 find_package(SDL3 REQUIRED CONFIG)
 
+# CPU rigid-body physics. Jolt's global factory is owned by physics::Runtime.
+set(OVERRIDE_CXX_FLAGS OFF CACHE BOOL "" FORCE)
+set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
+set(ENABLE_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
+set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(DEBUG_RENDERER_IN_DEBUG_AND_RELEASE OFF CACHE BOOL "" FORCE)
+set(PROFILER_IN_DEBUG_AND_RELEASE OFF CACHE BOOL "" FORCE)
+foreach(feature JPH_USE_DX12 JPH_USE_VK JPH_USE_MTL JPH_USE_CPU_COMPUTE USE_AVX USE_AVX2 USE_F16C USE_FMADD USE_LZCNT USE_TZCNT)
+  set(${feature} OFF CACHE BOOL "" FORCE)
+endforeach()
+FetchContent_Declare(jolt
+  URL https://codeload.github.com/jrouwe/JoltPhysics/tar.gz/refs/tags/v5.6.0
+  URL_HASH SHA256=6e069ee0172478cc78182047aac87e5310ba14a67a53348ae14cc37801fd3f8e
+  DOWNLOAD_EXTRACT_TIMESTAMP ON
+  SOURCE_SUBDIR Build)
+FetchContent_MakeAvailable(jolt)
+
 # Dear ImGui: developer UI only (see DECISIONS.md).
 if(ANVIL_DEVUI)
   FetchContent_Declare(imgui
