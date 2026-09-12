@@ -122,7 +122,7 @@ World::~World() {
 uint32_t World::loadModel(std::string_view name) {
   const std::string key = lower(name);
   if (auto found = modelHandles_.find(key); found != modelHandles_.end()) return found->second;
-  const auto geometry = loadPropGeometry(fs_, {key});
+  auto geometry = loadPropGeometry(fs_, {key}, true);
   if (geometry.models.empty() || !geometry.models[0].loaded) return 0;
   const auto& model = geometry.models[0];
   ModelAsset asset;
@@ -146,10 +146,48 @@ uint32_t World::loadModel(std::string_view name) {
     draw->indexCount = model.meshes[i].indexCount;
     asset.draws.push_back(*draw);
   }
+  if (auto mdl = fs_.readFile(key, "GAME")) asset.mdl = std::move(*mdl);
+  asset.studio = std::move(geometry.models[0].info);
+  asset.indices = std::move(geometry.indices);
   modelAssets_.push_back(std::move(asset));
   const auto handle = uint32_t(modelAssets_.size());
   modelHandles_[key] = handle;
   return handle;
+}
+
+bool World::animateModel(uint32_t model, std::string_view sequence, double time) {
+  if (!device_ || !model || model > modelAssets_.size() || !std::isfinite(time)) return false;
+  auto& asset = modelAssets_[model - 1];
+  const auto wanted = lower(sequence);
+  const auto found = std::find_if(asset.studio.sequences.begin(), asset.studio.sequences.end(), [&](const auto& item) {
+    return lower(item.name) == wanted;
+  });
+  if (found == asset.studio.sequences.end() || found->animations.empty()) return false;
+  const int animation = found->animations[0];
+  if (animation < 0 || size_t(animation) >= asset.studio.animations.size()) return false;
+  const auto& metadata = asset.studio.animations[size_t(animation)];
+  if (metadata.frames <= 0 || metadata.fps <= 0) return false;
+  const int frame = int(time * metadata.fps) % metadata.frames;
+  if (asset.animation == animation && asset.frame == frame) return true;
+  std::string error;
+  const auto pose = studio::sampleAnimation(asset.studio, asset.mdl, size_t(animation), frame, &error);
+  const auto matrices = pose ? studio::skinMatrices(asset.studio, *pose, &error) : std::nullopt;
+  const auto skinned = matrices ? studio::skinVertices(asset.studio, *matrices, &error) : std::nullopt;
+  if (!skinned) {
+    warnOnce("Animation " + std::string(sequence) + " unavailable: " + error);
+    return false;
+  }
+  std::vector<render::Vertex3D> vertices;
+  vertices.reserve(skinned->size());
+  for (const auto& vertex : *skinned)
+    vertices.push_back({vertex.pos[0], vertex.pos[1], vertex.pos[2], vertex.uv[0], vertex.uv[1], 0, 0, 0});
+  const auto mesh = device_->createMesh(vertices, asset.indices);
+  if (!mesh) return false;
+  device_->destroyMesh(asset.mesh);
+  asset.mesh = mesh;
+  asset.animation = animation;
+  asset.frame = frame;
+  return true;
 }
 
 bool World::modelBounds(uint32_t model, bsp::Vec3& mins, bsp::Vec3& maxs) const {

@@ -504,7 +504,7 @@ int main(int argc, char** argv) {
       device->targetSize(pw, ph);
       if (level && ph) {
         level->draw(camera, float(pw) / float(ph), !novis.asBool());
-        if (diagnosticPlay && simulation) combatView.draw(*level,*simulation,combat,camera,float(pw)/float(ph),!menu.visible && !freeCamera);
+        if (diagnosticPlay && simulation) combatView.draw(*level,*simulation,combat,camera,float(pw)/float(ph),clock.simTime(),!menu.visible && !freeCamera);
       }
       if (diagnosticPlay) device->draw2d(gameplay::interfaceBatch(menu,combat,camera,pw,ph,level != nullptr));
       if (!vguiDiagnosticBatch.indices.empty()) device->draw2d(vguiDiagnosticBatch);

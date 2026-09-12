@@ -24,6 +24,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
   - [x] Parse local animation metadata and sequence blend indices; preserve include-model references for later resolution.
   - [x] Decode bounded integer-frame inline MDL raw/RLE bone channels; validate 4690 installed viewmodel frame poses.
   - [x] Build parent-chain skin matrices and CPU-skin authored weighted vertices/normals; validate 138 viewmodel animations.
+  - [x] Submit CPU-skinned authored frames to the renderer in the opt-in viewmodel diagnostic.
 - [ ] Execute authored skeletal animation; model poses/recoil must not be substituted on the game path.
 - [ ] Instantiate authored entities and generic delayed I/O (no map-specific event chains).
 - [ ] Original sound resources/scripts and audio playback.

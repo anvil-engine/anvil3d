@@ -40,6 +40,6 @@ struct PropGeometry {
 
 // Loads <name>.mdl + .vvd + .dx90.vtx for each name through `fs` (path ID GAME). Failures are logged and leave
 // the model !loaded.
-PropGeometry loadPropGeometry(FileSystem& fs, const std::vector<std::string>& names);
+PropGeometry loadPropGeometry(FileSystem& fs, const std::vector<std::string>& names, bool keepStudioData = false);
 
 } // namespace anvil::world

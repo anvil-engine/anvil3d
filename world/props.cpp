@@ -36,7 +36,7 @@ bool ambientLight(const bsp::Map& map, const bsp::Vec3& point, float rgb[3]) {
   return true;
 }
 
-PropGeometry loadPropGeometry(FileSystem& fs, const std::vector<std::string>& names) {
+PropGeometry loadPropGeometry(FileSystem& fs, const std::vector<std::string>& names, bool keepStudioData) {
   PropGeometry out;
   out.models.resize(names.size());
   for (size_t n = 0; n < names.size(); ++n) {
@@ -66,8 +66,10 @@ PropGeometry loadPropGeometry(FileSystem& fs, const std::vector<std::string>& na
       mesh.indices.clear();
       mesh.indices.shrink_to_fit();
     }
-    model->vertices.clear();
-    model->vertices.shrink_to_fit();
+    if (!keepStudioData) {
+      model->vertices.clear();
+      model->vertices.shrink_to_fit();
+    }
     pm.info = std::move(*model);
     pm.loaded = !pm.meshes.empty();
   }

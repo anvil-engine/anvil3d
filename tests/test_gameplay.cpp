@@ -82,11 +82,11 @@ int main(int argc,char** argv) {
     CHECK(device->beginFrame(clear));device->draw2d(gameplay::interfaceBatch(menu,combat,camera,960,640,false));device->endFrame();
     auto pixels=device->readPixels();CHECK(pixels.size()==960*640*4);ppm("gameplay-menu.ppm",pixels,960,640);
     menu.visible=false;
-    CHECK(device->beginFrame(clear));level->draw(camera,1.5f);view.draw(*level,scene,combat,camera,1.5f);
+    CHECK(device->beginFrame(clear));level->draw(camera,1.5f);view.draw(*level,scene,combat,camera,1.5f,0);
     device->draw2d(gameplay::interfaceBatch(menu,combat,camera,960,640,true));device->endFrame();
     pixels=device->readPixels();ppm("gameplay-pistol.ppm",pixels,960,640);
     combat.step(dt,{false,false,1},scene,camera);
-    CHECK(device->beginFrame(clear));level->draw(camera,1.5f);view.draw(*level,scene,combat,camera,1.5f);
+    CHECK(device->beginFrame(clear));level->draw(camera,1.5f);view.draw(*level,scene,combat,camera,1.5f,0);
     device->draw2d(gameplay::interfaceBatch(menu,combat,camera,960,640,true));device->endFrame();
     pixels=device->readPixels();ppm("gameplay-shotgun.ppm",pixels,960,640);
   }

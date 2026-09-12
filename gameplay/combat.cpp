@@ -48,7 +48,7 @@ void Combat::reset(physics::Scene& scene, const world::Camera& camera) {
     if(body!=physics::invalidBody) targets_.push_back({body,100});
   }
   ANVIL_INFO("combat","Pistol + shotgun ready; %zu physical targets (practice objects)",targets_.size());
-  ANVIL_WARN("combat","PARTIAL: independent weapons, bind-pose models; no retail weapon scripts or skeletal animations");
+  ANVIL_WARN("combat","PARTIAL: independent weapons; original viewmodel idle animation is diagnostic, not retail weapon behavior");
 }
 void Combat::step(float dt,const CombatInput& input,physics::Scene& scene,const world::Camera& camera) {
   if(!std::isfinite(dt)||dt<=0||dt>0.05f) return;
@@ -98,13 +98,13 @@ void Combat::step(float dt,const CombatInput& input,physics::Scene& scene,const 
 }
 
 bool CombatView::load(world::World& world) {
-  pistol_=world.loadModel("models/weapons/w_pistol.mdl");
-  shotgun_=world.loadModel("models/weapons/w_shotgun.mdl");
+  pistol_=world.loadModel("models/weapons/v_pistol.mdl");
+  shotgun_=world.loadModel("models/weapons/v_shotgun.mdl");
   crate_=world.loadModel("models/props_junk/wood_crate001a.mdl");
   return pistol_ && shotgun_ && crate_;
 }
 void CombatView::draw(world::World& world,const physics::Scene& scene,const Combat& combat,
-                      const world::Camera& camera,float aspect,bool showWeapon) {
+                      const world::Camera& camera,float aspect,double time,bool showWeapon) {
   const auto view=world::viewProjection(camera,aspect);
   for(const auto& target:combat.targets()) {
     const auto m=poseMatrix(scene.bodyPose(target.body))*normalizeModel(world,crate_,{32,32,32});
@@ -112,8 +112,9 @@ void CombatView::draw(world::World& world,const physics::Scene& scene,const Comb
   }
   if(!showWeapon) return;
   const uint32_t model=combat.selected()==0?pistol_:shotgun_;
+  world.animateModel(model,"idle",time);
   // Local camera space uses Source axes: X forward, -Y right, Z up.
-  // Bind-pose world models are a temporary presentation until the studio animation path exists.
+  // This opt-in rig exercises original model animation without claiming retail weapon behavior.
   world::Camera eye{};
   auto projection=world::viewProjection(eye,aspect);
   // Reserve the nearest depth interval for the first-person model while preserving its self-occlusion.
@@ -125,7 +126,6 @@ void CombatView::draw(world::World& world,const physics::Scene& scene,const Comb
   const float size=std::max({hi.x-lo.x,hi.y-lo.y,hi.z-lo.z,1.0f});
   const float targetLength=combat.selected()==0?13.0f:25.0f;
   const auto shape=normalizeModel(world,model,{(hi.x-lo.x)*targetLength/size,(hi.y-lo.y)*targetLength/size,(hi.z-lo.z)*targetLength/size});
-  const world::Transform orientation{{},{0,-90,0}}; // HL2 world weapons have the barrel along +Y
-  world.drawModel(model,projection*placement.matrix()*orientation.matrix()*shape,1.0f);
+  world.drawModel(model,projection*placement.matrix()*shape,1.0f);
 }
 } // namespace anvil::gameplay

@@ -63,6 +63,7 @@ public:
   // 0 = failed load; handles expire with the World. Bounds refer to the model's bind pose.
   uint32_t loadModel(std::string_view name);
   bool modelBounds(uint32_t model, bsp::Vec3& mins, bsp::Vec3& maxs) const;
+  bool animateModel(uint32_t model, std::string_view sequence, double time);
   void drawModel(uint32_t model, const render::Mat4& mvp, float tint = 1.0f);
 
 private:
@@ -129,6 +130,10 @@ private:
     render::MeshHandle mesh = 0;
     bsp::Vec3 mins{}, maxs{};
     std::vector<render::Draw3D> draws;
+    studio::Model studio;
+    std::string mdl;
+    std::vector<uint32_t> indices;
+    int animation = -1, frame = -1;
   };
   std::vector<ModelAsset> modelAssets_;
   std::unordered_map<std::string, uint32_t> modelHandles_;

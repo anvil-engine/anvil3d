@@ -38,7 +38,7 @@ class CombatView {
 public:
   bool load(world::World& world);
   void draw(world::World& world, const physics::Scene& scene, const Combat& combat,
-            const world::Camera& camera, float aspect, bool showWeapon = true);
+            const world::Camera& camera, float aspect, double time, bool showWeapon = true);
 private:
   uint32_t pistol_ = 0, shotgun_ = 0, crate_ = 0;
 };
