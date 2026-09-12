@@ -34,6 +34,14 @@ struct Sequence {
   int32_t activity = 0;
 };
 
+struct Bone {
+  std::string name;
+  int32_t parent = -1;
+  float position[3] = {};
+  float rotation[4] = {};
+  uint32_t flags = 0;
+};
+
 struct Model {
   int32_t version = 0;
   uint32_t checksum = 0;
@@ -43,6 +51,7 @@ struct Model {
   std::vector<std::string> materials;    // names relative to one of materialDirs, e.g. "Oil_Drum001a"
   std::vector<std::string> materialDirs; // e.g. "models\props_c17/" (search in order, under materials/)
   std::vector<std::vector<int16_t>> skins; // [family][skinRef] -> index into materials
+  std::vector<Bone> bones;
   std::vector<Sequence> sequences;
   std::vector<Vertex> vertices;          // LOD 0 (after VVD fixups)
   std::vector<Mesh> meshes;

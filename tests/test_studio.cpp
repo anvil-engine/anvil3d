@@ -32,6 +32,8 @@ Buf makeMdl() {
   m.set(8, kChecksum);
   m.str(12, "test/quad.mdl");
   m.set(104, -1.0f);
+  m.set(156, int32_t(1));    // numbones
+  m.set(160, int32_t(1200)); // boneindex
   m.set(188, int32_t(1));   // numlocalseq
   m.set(192, int32_t(900)); // localseqindex
   m.set(204, int32_t(2));   // numtextures
@@ -68,6 +70,12 @@ Buf makeMdl() {
   m.set(916, int32_t(7));
   m.str(1120, "idle");
   m.str(1140, "ACT_VM_IDLE");
+  m.set(1200, int32_t(1420 - 1200));
+  m.set(1204, int32_t(-1));
+  m.set(1232, 1.0f);
+  m.set(1244 + 12, 1.0f); // quaternion w
+  m.set(1360, uint32_t(0x100));
+  m.str(1420, "root");
   return m;
 }
 
@@ -137,7 +145,7 @@ int main(int argc, char** argv) {
         if (p.size() > 4 && p.compare(p.size() - 4, 4, ".mdl") == 0) mdls.push_back(std::move(p));
       fsys.addArchive(std::move(vpk), argv[i], {"GAME"});
     }
-    size_t loaded = 0, noMesh = 0, tris = 0, sequences = 0;
+    size_t loaded = 0, noMesh = 0, tris = 0, sequences = 0, bones = 0;
     for (const std::string& path : mdls) {
       const std::string stem = path.substr(0, path.size() - 4);
       const auto mdl = fsys.readFile(path), vvd = fsys.readFile(stem + ".vvd"), vtx = fsys.readFile(stem + ".dx90.vtx");
@@ -152,10 +160,11 @@ int main(int argc, char** argv) {
       if (!m) continue;
       ++loaded;
       sequences += m->sequences.size();
+      bones += m->bones.size();
       for (const auto& mesh : m->meshes) tris += mesh.indices.size() / 3;
     }
-    std::printf("%zu models loaded, %zu without mesh files, %zu triangles, %zu local sequences\n",
-                loaded,noMesh,tris,sequences);
+    std::printf("%zu models loaded, %zu without mesh files, %zu triangles, %zu bones, %zu local sequences\n",
+                loaded,noMesh,tris,bones,sequences);
     return TEST_RESULT();
   }
 
@@ -170,6 +179,8 @@ int main(int argc, char** argv) {
     CHECK(m->materials.size() == 2 && m->materials[1] == "quad_b");
     CHECK(m->sequences.size() == 1 && m->sequences[0].name == "idle" &&
           m->sequences[0].activityName == "ACT_VM_IDLE");
+    CHECK(m->bones.size()==1&&m->bones[0].name=="root"&&m->bones[0].parent==-1&&
+          m->bones[0].position[0]==1.0f&&m->bones[0].rotation[3]==1.0f);
     CHECK(m->materialDirs.size() == 1 && m->materialDirs[0] == "models/test/");
     CHECK(m->vertices.size() == 4 && m->vertices[2].pos[0] == 10 && m->vertices[2].pos[1] == 10);
     CHECK(m->meshes.size() == 1);
@@ -193,6 +204,9 @@ int main(int argc, char** argv) {
   bad = mdl;
   bad.set(904, int32_t(999999));
   CHECK(!studio::load(bad.d, vvd.d, vtx.d, &err));
+  bad = mdl;
+  bad.set(1204,int32_t(2));
+  CHECK(!studio::load(bad.d,vvd.d,vtx.d,&err));
   bad = mdl;
   bad.set(664 + 8, int32_t(40)); // mesh claims more vertices than the VVD has
   CHECK(!studio::load(bad.d, vvd.d, vtx.d, &err));

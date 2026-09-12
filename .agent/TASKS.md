@@ -20,6 +20,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
 - [ ] Load weapon scripts and original viewmodel sequences/animations; independent diagnostic weapons do not satisfy Source weapon compatibility.
   - [x] Load bounded original weapon manifest/WeaponData fields through VFS and verify all 18 installed HL2 scripts.
   - [x] Parse local MDL sequence/activity metadata and resolve it for 17 installed HL2 viewmodels.
+  - [x] Parse bounded MDL bind-pose bone names, parents, positions and quaternions.
 - [ ] Execute authored skeletal animation; model poses/recoil must not be substituted on the game path.
 - [ ] Instantiate authored entities and generic delayed I/O (no map-specific event chains).
 - [ ] Original sound resources/scripts and audio playback.

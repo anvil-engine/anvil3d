@@ -283,7 +283,7 @@ int main(int argc, char** argv) {
     if (!manifestText) return ANVIL_ERROR("weapon","Missing scripts/weapon_manifest.txt");
     const auto files=weapon::parseManifest(*manifestText,&error);
     if (!files) return ANVIL_ERROR("weapon","Invalid manifest: %s",error.c_str());
-    size_t loaded=0,missingModels=0,viewModels=0,sequences=0;
+    size_t loaded=0,missingModels=0,viewModels=0,sequences=0,bones=0;
     for (const auto& path:*files) {
       const auto normalized=normalizePath(path);
       const auto text=normalized?fsys.readFile(*normalized,"GAME"):std::nullopt;
@@ -305,14 +305,14 @@ int main(int argc, char** argv) {
         const auto vvd=fsys.readFile(stem+".vvd","GAME");
         const auto vtx=fsys.readFile(stem+".dx90.vtx","GAME");
         const auto model=mdl&&vvd&&vtx?studio::load(*mdl,*vvd,*vtx,&error):std::nullopt;
-        if (model) { ++viewModels;sequences+=model->sequences.size(); }
+        if (model) { ++viewModels;sequences+=model->sequences.size();bones+=model->bones.size(); }
         else ANVIL_WARN("weapon","Viewmodel metadata unavailable for %s%s%s",script->viewModel.c_str(),
                         error.empty()?"":": ",error.c_str());
       }
       ++loaded;
     }
-    ANVIL_INFO("weapon","Loaded %zu/%zu original weapon scripts; %zu viewmodels with %zu local sequences; %zu referenced models missing",
-               loaded,files->size(),viewModels,sequences,missingModels);
+    ANVIL_INFO("weapon","Loaded %zu/%zu original weapon scripts; %zu viewmodels with %zu bones and %zu local sequences; %zu referenced models missing",
+               loaded,files->size(),viewModels,bones,sequences,missingModels);
     ANVIL_WARN("weapon","Script data only; weapon behavior and viewmodel animation are not implemented");
   }, "Load original scripts/weapon_manifest.txt and referenced WeaponData files");
   Clock clock;

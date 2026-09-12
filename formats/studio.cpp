@@ -8,7 +8,7 @@ namespace anvil::studio {
 namespace {
 
 // On-disk record sizes (MDL v44-48 / VVD v4 / VTX v7; VTX records are byte-packed).
-constexpr int64_t kMdlTexture = 64, kMdlBodyPart = 16, kMdlMesh = 116, kMdlSequence = 212;
+constexpr int64_t kMdlTexture = 64, kMdlBodyPart = 16, kMdlMesh = 116, kMdlSequence = 212, kMdlBone = 216;
 constexpr int64_t kVvdVertex = 48, kVvdFixup = 12;
 constexpr int64_t kVtxBodyPart = 8, kVtxMesh = 9, kVtxStripGroup = 25, kVtxStrip = 27, kVtxVertex = 9;
 constexpr int32_t kMaxCount = 1 << 20; // sanity cap on every count read from a file
@@ -39,6 +39,26 @@ struct Loader {
     rd(mdl, 104, m.hullMin, "");
     rd(mdl, 116, m.hullMax, "");
     rd(mdl, 152, m.flags, "");
+
+    int32_t numBones=0,boneIndex=0;
+    rd(mdl,156,numBones,"");
+    rd(mdl,160,boneIndex,"");
+    if (!count(numBones,"bad bone count")||numBones>256) return fail("bone count exceeds 256");
+    for (int32_t i=0;i<numBones;++i) {
+      const int64_t rec=int64_t(boneIndex)+int64_t(i)*kMdlBone;
+      int32_t nameOffset=0;
+      Bone bone;
+      std::string_view name;
+      if (!rd(mdl,rec,nameOffset,"bone out of range")||
+          !rd(mdl,rec+4,bone.parent,"bone out of range")||
+          !rd(mdl,rec+32,bone.position,"bone out of range")||
+          !rd(mdl,rec+44,bone.rotation,"bone out of range")||
+          !rd(mdl,rec+160,bone.flags,"bone out of range")||
+          !readCString(mdl,rec+nameOffset,name)) return fail("bone name out of range");
+      if (bone.parent < -1 || bone.parent >= numBones) return fail("bone parent out of range");
+      bone.name=name;
+      m.bones.push_back(std::move(bone));
+    }
 
     int32_t numSequences=0,sequenceIndex=0;
     rd(mdl,188,numSequences,"");
