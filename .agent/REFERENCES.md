@@ -21,6 +21,7 @@
 - FreeType public API/reference for memory-backed faces, pixel sizing, Unicode glyph lookup and rendering: https://freetype.org/freetype2/docs/tutorial/step1.html. Pinned upstream release: https://gitlab.freedesktop.org/freetype/freetype/-/tags/VER-2-14-3.
 - VPK, BSP, VTF, VMT, MDL/VVD/VTX, gameinfo.txt, KeyValues: Valve Developer Community wiki format pages; layouts verified against a retail HL2 install (see BLOCKERS.md for build id).
 - Source interface factory contract (CreateInterface name/return code): public Source SDK headers' documented behavior; no SDK code copied.
+- Studio sequence record layout: public Source SDK 2013 `studio.h` declarations, independently bounds-checked and verified against installed retail models: https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/public/studio.h.
 
 - Jolt API/build reference: https://github.com/jrouwe/JoltPhysics/releases/tag/v5.6.0 and fetched Jolt public headers. Binary distributions must include its MIT license.
 - BSP collision record layout only: https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/public/bspfile.h (public structs for brushes, brushsides, leafbrushes). No engine implementation copied; hull clipping is an independent geometric construction.

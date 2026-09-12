@@ -8,7 +8,7 @@ namespace anvil::studio {
 namespace {
 
 // On-disk record sizes (MDL v44-48 / VVD v4 / VTX v7; VTX records are byte-packed).
-constexpr int64_t kMdlTexture = 64, kMdlBodyPart = 16, kMdlMesh = 116;
+constexpr int64_t kMdlTexture = 64, kMdlBodyPart = 16, kMdlMesh = 116, kMdlSequence = 212;
 constexpr int64_t kVvdVertex = 48, kVvdFixup = 12;
 constexpr int64_t kVtxBodyPart = 8, kVtxMesh = 9, kVtxStripGroup = 25, kVtxStrip = 27, kVtxVertex = 9;
 constexpr int32_t kMaxCount = 1 << 20; // sanity cap on every count read from a file
@@ -39,6 +39,26 @@ struct Loader {
     rd(mdl, 104, m.hullMin, "");
     rd(mdl, 116, m.hullMax, "");
     rd(mdl, 152, m.flags, "");
+
+    int32_t numSequences=0,sequenceIndex=0;
+    rd(mdl,188,numSequences,"");
+    rd(mdl,192,sequenceIndex,"");
+    if (!count(numSequences,"bad sequence count")) return false;
+    for (int32_t i=0;i<numSequences;++i) {
+      const int64_t rec=int64_t(sequenceIndex)+int64_t(i)*kMdlSequence;
+      int32_t labelOffset=0,activityOffset=0;
+      Sequence sequence;
+      std::string_view label,activity;
+      if (!rd(mdl,rec+4,labelOffset,"sequence out of range")||
+          !rd(mdl,rec+8,activityOffset,"sequence out of range")||
+          !rd(mdl,rec+12,sequence.flags,"sequence out of range")||
+          !rd(mdl,rec+16,sequence.activity,"sequence out of range")||
+          !readCString(mdl,rec+labelOffset,label)||!readCString(mdl,rec+activityOffset,activity))
+        return fail("sequence name out of range");
+      sequence.name=label;
+      sequence.activityName=activity;
+      m.sequences.push_back(std::move(sequence));
+    }
 
     int32_t numTextures = 0, textureIndex = 0, numCd = 0, cdIndex = 0, numFamilies = 0, skinIndex = 0;
     rd(mdl, 204, numTextures, "");

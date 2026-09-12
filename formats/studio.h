@@ -10,7 +10,8 @@ namespace anvil::studio {
 
 // Source studio model = .mdl (header, materials, body parts) + .vvd (vertices) + .vtx (optimized index strips).
 // Loads a render-ready LOD 0 of the default body (sub-model 0 of every body part).
-// Supported: MDL v44-48 (HL2 through TF2 era), VVD v4, VTX v7. Skeleton/animation/flexes: not yet.
+// Supported: MDL v44-48 (HL2 through TF2 era), VVD v4, VTX v7. Sequence metadata is exposed;
+// skeleton pose decoding, animation blocks and flexes are not yet supported.
 
 struct Vertex {
   float pos[3];
@@ -26,6 +27,13 @@ struct Mesh {
   std::vector<uint32_t> indices;  // triangle list into Model::vertices
 };
 
+struct Sequence {
+  std::string name;
+  std::string activityName;
+  int32_t flags = 0;
+  int32_t activity = 0;
+};
+
 struct Model {
   int32_t version = 0;
   uint32_t checksum = 0;
@@ -35,6 +43,7 @@ struct Model {
   std::vector<std::string> materials;    // names relative to one of materialDirs, e.g. "Oil_Drum001a"
   std::vector<std::string> materialDirs; // e.g. "models\props_c17/" (search in order, under materials/)
   std::vector<std::vector<int16_t>> skins; // [family][skinRef] -> index into materials
+  std::vector<Sequence> sequences;
   std::vector<Vertex> vertices;          // LOD 0 (after VVD fixups)
   std::vector<Mesh> meshes;
 

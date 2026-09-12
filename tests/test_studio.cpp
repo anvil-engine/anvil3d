@@ -32,6 +32,8 @@ Buf makeMdl() {
   m.set(8, kChecksum);
   m.str(12, "test/quad.mdl");
   m.set(104, -1.0f);
+  m.set(188, int32_t(1));   // numlocalseq
+  m.set(192, int32_t(900)); // localseqindex
   m.set(204, int32_t(2));   // numtextures
   m.set(208, int32_t(300)); // textureindex
   m.set(212, int32_t(1));   // numcdtextures
@@ -60,6 +62,12 @@ Buf makeMdl() {
   m.str(800, "quad_a");
   m.str(820, "quad_b");
   m.str(840, "models/test/");
+  m.set(904, int32_t(1120 - 900));
+  m.set(908, int32_t(1140 - 900));
+  m.set(912, int32_t(1));
+  m.set(916, int32_t(7));
+  m.str(1120, "idle");
+  m.str(1140, "ACT_VM_IDLE");
   return m;
 }
 
@@ -129,7 +137,7 @@ int main(int argc, char** argv) {
         if (p.size() > 4 && p.compare(p.size() - 4, 4, ".mdl") == 0) mdls.push_back(std::move(p));
       fsys.addArchive(std::move(vpk), argv[i], {"GAME"});
     }
-    size_t loaded = 0, noMesh = 0, tris = 0;
+    size_t loaded = 0, noMesh = 0, tris = 0, sequences = 0;
     for (const std::string& path : mdls) {
       const std::string stem = path.substr(0, path.size() - 4);
       const auto mdl = fsys.readFile(path), vvd = fsys.readFile(stem + ".vvd"), vtx = fsys.readFile(stem + ".dx90.vtx");
@@ -143,9 +151,11 @@ int main(int argc, char** argv) {
       CHECK(m.has_value());
       if (!m) continue;
       ++loaded;
+      sequences += m->sequences.size();
       for (const auto& mesh : m->meshes) tris += mesh.indices.size() / 3;
     }
-    std::printf("%zu models loaded, %zu without mesh files, %zu triangles\n", loaded, noMesh, tris);
+    std::printf("%zu models loaded, %zu without mesh files, %zu triangles, %zu local sequences\n",
+                loaded,noMesh,tris,sequences);
     return TEST_RESULT();
   }
 
@@ -158,6 +168,8 @@ int main(int argc, char** argv) {
     if (!m) continue;
     CHECK(m->name == "test/quad.mdl" && m->version == 44);
     CHECK(m->materials.size() == 2 && m->materials[1] == "quad_b");
+    CHECK(m->sequences.size() == 1 && m->sequences[0].name == "idle" &&
+          m->sequences[0].activityName == "ACT_VM_IDLE");
     CHECK(m->materialDirs.size() == 1 && m->materialDirs[0] == "models/test/");
     CHECK(m->vertices.size() == 4 && m->vertices[2].pos[0] == 10 && m->vertices[2].pos[1] == 10);
     CHECK(m->meshes.size() == 1);
@@ -177,6 +189,9 @@ int main(int argc, char** argv) {
   CHECK(!studio::load(mdl.d, vvd.d, bad.d, &err));
   bad = mdl;
   bad.set(446, int16_t(5)); // skin references missing texture
+  CHECK(!studio::load(bad.d, vvd.d, vtx.d, &err));
+  bad = mdl;
+  bad.set(904, int32_t(999999));
   CHECK(!studio::load(bad.d, vvd.d, vtx.d, &err));
   bad = mdl;
   bad.set(664 + 8, int32_t(40)); // mesh claims more vertices than the VVD has

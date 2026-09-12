@@ -19,6 +19,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
 - [ ] Instantiate/render original VGUI panels, schemes and fonts; execute supported menu commands through real mechanisms, report unsupported commands.
 - [ ] Load weapon scripts and original viewmodel sequences/animations; independent diagnostic weapons do not satisfy Source weapon compatibility.
   - [x] Load bounded original weapon manifest/WeaponData fields through VFS and verify all 18 installed HL2 scripts.
+  - [x] Parse local MDL sequence/activity metadata and resolve it for 17 installed HL2 viewmodels.
 - [ ] Execute authored skeletal animation; model poses/recoil must not be substituted on the game path.
 - [ ] Instantiate authored entities and generic delayed I/O (no map-specific event chains).
 - [ ] Original sound resources/scripts and audio playback.
