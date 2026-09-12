@@ -54,10 +54,12 @@ struct Bone {
   float euler[3] = {};
   float positionScale[3] = {};
   float rotationScale[3] = {};
+  float poseToBone[12] = {};
   uint32_t flags = 0;
 };
 
 struct BonePose { float position[3] = {}, rotation[4] = {}; };
+struct BoneMatrix { float m[12] = {}; };
 
 struct Model {
   int32_t version = 0;
@@ -83,5 +85,9 @@ std::optional<Model> load(std::string_view mdl, std::string_view vvd, std::strin
                           std::string* error = nullptr);
 std::optional<std::vector<BonePose>> sampleAnimation(const Model& model,std::string_view mdl,
                                                      size_t animation,int frame,std::string* error=nullptr);
+std::optional<std::vector<BoneMatrix>> skinMatrices(const Model& model,const std::vector<BonePose>& pose,
+                                                    std::string* error=nullptr);
+std::optional<std::vector<Vertex>> skinVertices(const Model& model,const std::vector<BoneMatrix>& matrices,
+                                                std::string* error=nullptr);
 
 } // namespace anvil::studio

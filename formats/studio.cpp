@@ -60,6 +60,7 @@ struct Loader {
           !rd(mdl,rec+60,bone.euler,"bone out of range")||
           !rd(mdl,rec+72,bone.positionScale,"bone out of range")||
           !rd(mdl,rec+84,bone.rotationScale,"bone out of range")||
+          !rd(mdl,rec+96,bone.poseToBone,"bone out of range")||
           !rd(mdl,rec+160,bone.flags,"bone out of range")||
           !readCString(mdl,rec+nameOffset,name)) return fail("bone name out of range");
       if (bone.parent < -1 || bone.parent >= numBones) return fail("bone parent out of range");
@@ -403,6 +404,65 @@ std::optional<std::vector<BonePose>> sampleAnimation(const Model& model,std::str
     rec+=next;
   }
   return fail("animation record chain exceeds bone count");
+}
+
+std::optional<std::vector<BoneMatrix>> skinMatrices(const Model& model,const std::vector<BonePose>& pose,
+                                                    std::string* error) {
+  auto fail=[&](const char* reason)->std::optional<std::vector<BoneMatrix>>{if(error)*error=reason;return {};};
+  if (pose.size()!=model.bones.size()) return fail("pose bone count mismatch");
+  auto multiply=[](const BoneMatrix& a,const float b[12]) {
+    BoneMatrix out;
+    for(int row=0;row<3;++row) for(int col=0;col<4;++col) {
+      out.m[row*4+col]=a.m[row*4+0]*b[col]+a.m[row*4+1]*b[4+col]+a.m[row*4+2]*b[8+col];
+      if(col==3) out.m[row*4+col]+=a.m[row*4+3];
+    }
+    return out;
+  };
+  std::vector<BoneMatrix> global(model.bones.size()),skin(model.bones.size());
+  for(size_t i=0;i<model.bones.size();++i) {
+    const float* q=pose[i].rotation;
+    const float length=std::sqrt(q[0]*q[0]+q[1]*q[1]+q[2]*q[2]+q[3]*q[3]);
+    if (!std::isfinite(length)||length<1e-8f) return fail("invalid pose quaternion");
+    const float x=q[0]/length,y=q[1]/length,z=q[2]/length,w=q[3]/length;
+    float local[12]={1-2*y*y-2*z*z,2*x*y-2*w*z,2*x*z+2*w*y,pose[i].position[0],
+                     2*x*y+2*w*z,1-2*x*x-2*z*z,2*y*z-2*w*x,pose[i].position[1],
+                     2*x*z-2*w*y,2*y*z+2*w*x,1-2*x*x-2*y*y,pose[i].position[2]};
+    const int parent=model.bones[i].parent;
+    if (parent>=int(i)) return fail("bone hierarchy is not parent-first");
+    if (parent<0) std::copy_n(local,12,global[i].m);
+    else global[i]=multiply(global[size_t(parent)],local);
+    skin[i]=multiply(global[i],model.bones[i].poseToBone);
+  }
+  return skin;
+}
+
+std::optional<std::vector<Vertex>> skinVertices(const Model& model,const std::vector<BoneMatrix>& matrices,
+                                                std::string* error) {
+  auto fail=[&](const char* reason)->std::optional<std::vector<Vertex>>{if(error)*error=reason;return {};};
+  if (matrices.size()!=model.bones.size()) return fail("skin matrix count mismatch");
+  std::vector<Vertex> out=model.vertices;
+  for(size_t i=0;i<model.vertices.size();++i) {
+    const Vertex& source=model.vertices[i];Vertex& target=out[i];
+    if (source.numBones>3) return fail("vertex bone count exceeds 3");
+    if (!source.numBones) continue;
+    target.pos[0]=target.pos[1]=target.pos[2]=0;
+    target.normal[0]=target.normal[1]=target.normal[2]=0;
+    float total=0;
+    for(uint8_t influence=0;influence<source.numBones;++influence) {
+      const size_t bone=source.bone[influence];const float weight=source.boneWeight[influence];
+      if (bone>=matrices.size()||!std::isfinite(weight)||weight<0) return fail("invalid vertex bone influence");
+      const float* m=matrices[bone].m;total+=weight;
+      for(int row=0;row<3;++row) {
+        target.pos[row]+=weight*(m[row*4]*source.pos[0]+m[row*4+1]*source.pos[1]+m[row*4+2]*source.pos[2]+m[row*4+3]);
+        target.normal[row]+=weight*(m[row*4]*source.normal[0]+m[row*4+1]*source.normal[1]+m[row*4+2]*source.normal[2]);
+      }
+    }
+    if (!std::isfinite(total)||total<1e-8f) return fail("invalid vertex bone weights");
+    for(float& component:target.pos) component/=total;
+    const float normalLength=std::sqrt(target.normal[0]*target.normal[0]+target.normal[1]*target.normal[1]+target.normal[2]*target.normal[2]);
+    if (normalLength>1e-8f) for(float& component:target.normal) component/=normalLength;
+  }
+  return out;
 }
 
 std::optional<Model> load(std::string_view mdl, std::string_view vvd, std::string_view vtx, std::string* error) {

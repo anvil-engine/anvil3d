@@ -80,6 +80,9 @@ Buf makeMdl() {
   m.set(1244 + 12, 1.0f); // quaternion w
   m.set(1272,0.5f);
   m.set(1284,0.01f);
+  m.set(1296,1.0f);m.set(1308,-1.0f);
+  m.set(1316,1.0f);
+  m.set(1336,1.0f);
   m.set(1360, uint32_t(0x100));
   m.str(1420, "root");
   m.set(1454,int32_t(1570-1450));
@@ -209,6 +212,9 @@ int main(int argc, char** argv) {
     const auto pose=studio::sampleAnimation(*m,mdl.d,0,0,&err);
     CHECK(pose&&pose->size()==1&&(*pose)[0].position[0]==1.0f&&(*pose)[0].position[1]==2.0f&&
           (*pose)[0].position[2]==3.0f&&(*pose)[0].rotation[3]>0.999f);
+    const auto matrices=pose?studio::skinMatrices(*m,*pose,&err):std::nullopt;
+    const auto skinned=matrices?studio::skinVertices(*m,*matrices,&err):std::nullopt;
+    CHECK(skinned&&(*skinned)[0].pos[0]==0.0f&&(*skinned)[0].pos[1]==2.0f&&(*skinned)[0].pos[2]==3.0f);
     CHECK(!studio::sampleAnimation(*m,mdl.d,0,10,&err));
     CHECK(!studio::sampleAnimation(*m,mdl.d.substr(0,1662),0,0,&err));
     std::string emptyAnimation=mdl.d;emptyAnimation[1650]=char(255);
