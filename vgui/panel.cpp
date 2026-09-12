@@ -93,6 +93,14 @@ std::optional<PanelRuntime> PanelRuntime::instantiate(std::vector<PanelResource>
   std::stable_sort(runtime.focusOrder_.begin(), runtime.focusOrder_.end(), [&](size_t a, size_t b) {
     return runtime.controls_[a].resource.tabPosition < runtime.controls_[b].resource.tabPosition;
   });
+  const auto selected=std::find_if(runtime.focusOrder_.begin(),runtime.focusOrder_.end(),[&](size_t i) {
+    return runtime.controls_[i].resource.defaultButton;
+  });
+  if (selected!=runtime.focusOrder_.end()) {
+    runtime.focusCursor_=size_t(selected-runtime.focusOrder_.begin());
+    runtime.controls_[*selected].focused=true;
+    runtime.hasFocus_=true;
+  }
   return runtime;
 }
 

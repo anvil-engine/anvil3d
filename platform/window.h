@@ -38,9 +38,11 @@ public:
   // Input state as of the last pumpEvents(). Key names are SDL key names, case-insensitive ("W", "Space",
   // "Left Shift"); unknown names read as released. Mouse buttons: 1 left, 2 right, 3 middle (Source MOUSE1-3).
   bool keyDown(const char* name) const;
+  bool keyPressed(const char* name) const;
   bool focused() const;
   void mousePosition(float& x, float& y) const;
   bool mouseDown(int button) const;
+  bool mousePressed(int button) const;
   // Mouse motion accumulated by the last pumpEvents(), in logical units (unbounded in relative mode).
   void mouseDelta(float& dx, float& dy) const {
     dx = mouseDx_;
@@ -58,6 +60,8 @@ private:
   SDL_Window* window_;
   bool vulkan_ = false;
   float mouseDx_ = 0, mouseDy_ = 0;
+  std::vector<uint32_t> pressedKeys_;
+  uint32_t pressedMouse_ = 0;
 };
 
 // Vulkan implementation discovery: system loader, or MoltenVK on Apple (Homebrew prefixes included).

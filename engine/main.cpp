@@ -1,5 +1,6 @@
 #include "common/cmdline.h"
 #include "common/log.h"
+#include "common/strutil.h"
 #include "engine/clock.h"
 #include "engine/console.h"
 #include "devui/devui.h"
@@ -88,6 +89,9 @@ int main(int argc, char** argv) {
   render::Batch2D vguiDiagnosticBatch;
   std::vector<render::TextureHandle> vguiDiagnosticTextures;
   std::vector<render::Batch2D> vguiDiagnosticText;
+  std::optional<vgui::PanelRuntime> vguiDiagnosticPanel;
+  std::optional<vgui::Scheme> vguiDiagnosticScheme;
+  int vguiDiagnosticWide=0,vguiDiagnosticTall=0;
   const bool diagnosticPlay = cmdline.has("-diagnosticplay");
   menu.visible = diagnosticPlay;
   if (diagnosticPlay) ANVIL_WARN("diagnostic", "Independent combat/menu test enabled; NOT Source game behavior or game UI");
@@ -95,6 +99,11 @@ int main(int argc, char** argv) {
 
   bool running = true;
   Console console;
+  auto clearVguiDiagnostic=[&] {
+    if (device) for (const auto texture:vguiDiagnosticTextures) device->destroyTexture(texture);
+    vguiDiagnosticTextures.clear();vguiDiagnosticText.clear();vguiDiagnosticBatch.clear();
+    vguiDiagnosticPanel.reset();vguiDiagnosticScheme.reset();
+  };
   console.addCommand("quit", [&](const Console::Args&) { running = false; }, "Exit the engine");
   console.addCommand("exec", [&](const Console::Args& a) {
     if (a.size() < 2) return ANVIL_WARN("console", "usage: exec <file>");
@@ -181,8 +190,7 @@ int main(int argc, char** argv) {
     };
     if (!parseDimension(args[2],wide)||!parseDimension(args[3],tall))
       return ANVIL_WARN("vgui","Panel parent dimensions must be in 1..16384");
-    if (device) for (const auto texture:vguiDiagnosticTextures) device->destroyTexture(texture);
-    vguiDiagnosticTextures.clear();vguiDiagnosticText.clear();vguiDiagnosticBatch.clear();
+    clearVguiDiagnostic();
     std::string error;
     vgui::Localization localization;
     if (!localization.load(fsys,"resource/gameui_english.txt",&error))
@@ -193,7 +201,8 @@ int main(int argc, char** argv) {
     if (!descriptors) return ANVIL_ERROR("vgui","%s",error.c_str());
     auto runtime=vgui::PanelRuntime::instantiate(std::move(*descriptors),wide,tall,&error);
     if (!runtime) return ANVIL_ERROR("vgui","%s",error.c_str());
-    for (const auto& control:runtime->controls()) {
+    vguiDiagnosticPanel=std::move(*runtime);vguiDiagnosticWide=wide;vguiDiagnosticTall=tall;
+    for (const auto& control:vguiDiagnosticPanel->controls()) {
       const char* kind=control.kind==vgui::ControlKind::Panel?"Panel":
                        control.kind==vgui::ControlKind::Label?"Label":
                        control.kind==vgui::ControlKind::Button?"Button":
@@ -207,7 +216,8 @@ int main(int argc, char** argv) {
     vgui::Scheme scheme;
     const std::string schemePath=args.size()==5?args[4]:"resource/sourcescheme.res";
     if (!scheme.load(fsys,schemePath,&error)) ANVIL_WARN("vgui","Panel Scheme unavailable: %s",error.c_str());
-    else if (auto paint=runtime->paint(scheme,&error)) {
+    else if (auto paint=vguiDiagnosticPanel->paint(scheme,&error)) {
+      vguiDiagnosticScheme=scheme;
       ANVIL_INFO("vgui","Original paint plan: %zu fills, %zu borders, %zu text runs, %zu unsupported controls",
                  paint->solids.size(),paint->borders.size(),paint->text.size(),paint->unsupported);
       uint32_t targetWide=uint32_t(wide),targetTall=uint32_t(tall);
@@ -238,7 +248,7 @@ int main(int argc, char** argv) {
         if (system.truncated) ANVIL_WARN("vgui","System font scan reached its safety limit");
       }
     } else ANVIL_WARN("vgui","Panel paint plan incomplete: %s",error.c_str());
-    ANVIL_WARN("vgui","PARTIAL diagnostic view: unsupported controls and command dispatch are not implemented");
+    ANVIL_WARN("vgui","PARTIAL diagnostic view: unsupported controls and commands are reported");
   }, "Instantiate supported original panel controls and report unsupported types");
   console.addCommand("vgui_scheme", [&](const Console::Args& args) {
     if (args.size()!=4) return ANVIL_WARN("vgui","usage: vgui_scheme <virtual-path> <font-name> <screen-height>");
@@ -322,10 +332,44 @@ int main(int argc, char** argv) {
     const bool mouse = focused && window->mouseDown(1);
     menuInput.click = mouse && !mouseHeld; mouseHeld = mouse;
     window->mousePosition(menuInput.x,menuInput.y);
+    const float mouseLogicalX=menuInput.x,mouseLogicalY=menuInput.y;
     menuInput.mouseMoved = menuInput.x != lastMouseX || menuInput.y != lastMouseY;
     lastMouseX = menuInput.x; lastMouseY = menuInput.y;
     uint32_t logicalW=0,logicalH=0; window->logicalSize(logicalW,logicalH);
     gameplay::menuCoordinates(menuInput.x,menuInput.y,float(logicalW),float(logicalH));
+    if (vguiDiagnosticPanel && focused) {
+      bool repaint=false;
+      std::optional<std::string> command;
+      if (window->keyPressed("Tab")) repaint=vguiDiagnosticPanel->moveFocus(window->keyDown("Left Shift")||window->keyDown("Right Shift"));
+      if (window->keyPressed("Return")) command=vguiDiagnosticPanel->activateFocused();
+      if (window->mousePressed(1)) {
+        uint32_t targetW=logicalW,targetH=logicalH;
+        if (device) device->targetSize(targetW,targetH);
+        const float sx=logicalW?float(targetW)/float(logicalW):1.0f;
+        const float sy=logicalH?float(targetH)/float(logicalH):1.0f;
+        command=vguiDiagnosticPanel->activateAt(int(mouseLogicalX*sx)-(int(targetW)-vguiDiagnosticWide)/2,
+                                                int(mouseLogicalY*sy)-(int(targetH)-vguiDiagnosticTall)/2);
+        repaint=command.has_value();
+      }
+      if (repaint && vguiDiagnosticScheme) {
+        std::string error;
+        if (auto paint=vguiDiagnosticPanel->paint(*vguiDiagnosticScheme,&error)) {
+          uint32_t targetW=uint32_t(vguiDiagnosticWide),targetH=uint32_t(vguiDiagnosticTall);
+          if (device) device->targetSize(targetW,targetH);
+          auto batch=vgui::paintBatch(*paint,(int(targetW)-vguiDiagnosticWide)/2,
+                                      (int(targetH)-vguiDiagnosticTall)/2,
+                                      {0,0,int32_t(targetW),int32_t(targetH)},&error);
+          if (batch) vguiDiagnosticBatch=std::move(*batch);
+        }
+      }
+      if (command) {
+        if (command->empty()) ANVIL_WARN("vgui","Empty authored command is unsupported");
+        else if (iequals(*command,"Close")||iequals(*command,"ResumeGame")) clearVguiDiagnostic();
+        else if (iequals(*command,"Quit")) running=false;
+        else if (command->size()>7&&iequals(command->substr(0,7),"engine ")) console.execute(command->substr(7));
+        else ANVIL_WARN("vgui","Unsupported authored command: %s",command->c_str());
+      }
+    }
     if (!diagnosticPlay && menuInput.escape) inspectCaptured = !inspectCaptured;
     if (diagnosticPlay && menuInput.escape && !menu.visible) { menu.visible=true; menu.selected=0; menuInput.escape=false; }
     if (focused) {

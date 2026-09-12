@@ -111,6 +111,7 @@ int main(int argc,char** argv) {
       CHECK(rect&&rect->wide==640);
       auto runtime=vgui::PanelRuntime::instantiate(std::move(*panels),640,480,&error);
       CHECK(runtime&&runtime->controls().size()==3&&runtime->unsupportedCount()==0);
+      CHECK(runtime&&runtime->activateFocused()=="Go");
       CHECK(runtime&&runtime->moveFocus()&&runtime->activateFocused()=="Go");
       CHECK(runtime&&runtime->moveFocus()&&runtime->activateFocused()=="Go");
       CHECK(runtime&&runtime->activateAt(270,20)=="Go");

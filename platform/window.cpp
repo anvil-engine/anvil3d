@@ -6,6 +6,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 
+#include <algorithm>
 #include <cstdlib>
 
 namespace anvil::platform {
@@ -126,6 +127,8 @@ uint64_t Window::createVulkanSurface(void* instance) const {
 bool Window::pumpEvents() {
   bool running = true;
   mouseDx_ = mouseDy_ = 0;
+  pressedKeys_.clear();
+  pressedMouse_ = 0;
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
     if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) running = false;
@@ -133,6 +136,8 @@ bool Window::pumpEvents() {
       mouseDx_ += event.motion.xrel;
       mouseDy_ += event.motion.yrel;
     }
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) pressedKeys_.push_back(event.key.scancode);
+    if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) pressedMouse_ |= SDL_BUTTON_MASK(event.button.button);
   }
   return running;
 }
@@ -144,12 +149,22 @@ bool Window::keyDown(const char* name) const {
   return code != SDL_SCANCODE_UNKNOWN && int(code) < count && keys[code];
 }
 
+bool Window::keyPressed(const char* name) const {
+  const auto code=uint32_t(SDL_GetScancodeFromName(name));
+  return code!=SDL_SCANCODE_UNKNOWN&&std::find(pressedKeys_.begin(),pressedKeys_.end(),code)!=pressedKeys_.end();
+}
+
 bool Window::focused() const { return SDL_GetKeyboardFocus() == window_; }
 void Window::mousePosition(float& x, float& y) const { SDL_GetMouseState(&x, &y); }
 
 bool Window::mouseDown(int button) const {
   const int sdl[4] = {0, SDL_BUTTON_LEFT, SDL_BUTTON_RIGHT, SDL_BUTTON_MIDDLE};
   return button >= 1 && button <= 3 && (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_MASK(sdl[button]));
+}
+
+bool Window::mousePressed(int button) const {
+  const int sdl[4]={0,SDL_BUTTON_LEFT,SDL_BUTTON_RIGHT,SDL_BUTTON_MIDDLE};
+  return button>=1&&button<=3&&(pressedMouse_&SDL_BUTTON_MASK(sdl[button]));
 }
 
 void Window::setRelativeMouse(bool on) { SDL_SetWindowRelativeMouseMode(window_, on); }

@@ -15,6 +15,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
 - [x] Resolve original Scheme border aliases/layers and build scheme-derived paint plans for common controls.
 - [x] Batch and submit original Scheme fills/borders through render::2d; verify headless pixels.
 - [x] Resolve exact authored system-font families and upload clipped/aligned original panel text runs.
+- [x] Drive common panels from SDL key/mouse edges and execute the small supported authored-command set; warn on every unsupported command.
 - [ ] Instantiate/render original VGUI panels, schemes and fonts; execute supported menu commands through real mechanisms, report unsupported commands.
 - [ ] Load weapon scripts and original viewmodel sequences/animations; independent diagnostic weapons do not satisfy Source weapon compatibility.
 - [ ] Execute authored skeletal animation; model poses/recoil must not be substituted on the game path.
