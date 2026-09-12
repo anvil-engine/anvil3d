@@ -4,6 +4,19 @@ include(FetchContent)
 
 find_package(SDL3 REQUIRED CONFIG)
 
+# Original VGUI TrueType/OpenType fonts are loaded from the virtual filesystem.
+set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+set(FT_ENABLE_ERROR_STRINGS ON CACHE BOOL "" FORCE)
+FetchContent_Declare(freetype
+  URL https://codeload.github.com/freetype/freetype/tar.gz/refs/tags/VER-2-14-3
+  URL_HASH SHA256=dc49de6b01a266eef4876a4dd34d9842c475d3e28ff2eff63bd2fb760ab56261
+  DOWNLOAD_EXTRACT_TIMESTAMP ON)
+FetchContent_MakeAvailable(freetype)
+
 # CPU rigid-body physics. Jolt's global factory is owned by physics::Runtime.
 set(OVERRIDE_CXX_FLAGS OFF CACHE BOOL "" FORCE)
 set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)

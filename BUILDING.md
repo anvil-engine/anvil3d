@@ -25,3 +25,5 @@ Options:
 - `-DANVIL_HL2_DIR=<Half-Life 2 install>` enables tests over your own game files.
 
 Physics: Jolt 5.6.0 is fetched and built automatically (CPU only). No separately installed physics SDK is required.
+
+Fonts: FreeType 2.14.3 is fetched and built automatically for original VGUI custom-font loading.

@@ -34,4 +34,23 @@ struct MenuState { bool inGame = false, multiplayer = false, console = false, vr
 struct MenuItem { std::string id, label, command; int inGameOrder = 0; };
 // Interprets authored GameMenu entries and visibility flags. This does not synthesize panel layout or execute commands.
 std::vector<MenuItem> menuItems(const KeyValues& resource, const Localization& localization, const MenuState& state);
+
+enum class LayoutMode { Near, Center, Far };
+struct LayoutValue { LayoutMode mode = LayoutMode::Near; int offset = 0; };
+struct PanelResource {
+  std::string id, controlName, fieldName, label, title, command, textAlignment;
+  std::string font, border, foreground, background;
+  LayoutValue x, y, wide, tall;
+  int tabPosition = 0;
+  bool visible = true, enabled = true, defaultButton = false;
+};
+struct PanelRect { int x = 0, y = 0, wide = 0, tall = 0; };
+
+// Interprets one authored panel-layout block. cN positions from the parent center,
+// rN positions from its far edge, and fN extents fill to its far edge.
+std::optional<std::vector<PanelResource>> panelResources(const KeyValues& resource,
+                                                         const Localization& localization,
+                                                         std::string* error = nullptr);
+std::optional<PanelRect> resolvePanelRect(const PanelResource& panel, int parentWide, int parentTall,
+                                          std::string* error = nullptr);
 } // namespace anvil::vgui

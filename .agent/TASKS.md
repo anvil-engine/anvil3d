@@ -8,6 +8,13 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
 - [x] Original VGUI resource loading through ordered VFS, including PLATFORM; relative #base/#include, UTF-16 localization and opt-in KeyValues escapes.
 - [x] Interpret GameMenu.res labels, commands and observed visibility/order flags from original data. Console diagnostics only.
 - [x] Interpret scheme color aliases and font candidate ranges/order, preserving original font attributes and custom font file paths. Font face loading, rasterization and proportional sizing remain next steps.
+- [x] Load original custom TTF/OpenType faces through VFS and rasterize glyph coverage/metrics using authored scheme candidate order. Missing/system fonts and unsupported effects remain explicit.
+- [x] Compose bounded single-line UTF-8 runs from original glyphs into RGBA8 text textures and backend-neutral 2D draw batches.
+- [x] Interpret original panel descriptors: control identity/type, localized text, commands, state, tab order and observed relative geometry forms.
+- [x] Instantiate common original panel controls with focus traversal, hit activation and explicit unsupported-type reporting.
+- [x] Resolve original Scheme border aliases/layers and build scheme-derived paint plans for common controls.
+- [x] Batch and submit original Scheme fills/borders through render::2d; verify headless pixels.
+- [x] Resolve exact authored system-font families and upload clipped/aligned original panel text runs.
 - [ ] Instantiate/render original VGUI panels, schemes and fonts; execute supported menu commands through real mechanisms, report unsupported commands.
 - [ ] Load weapon scripts and original viewmodel sequences/animations; independent diagnostic weapons do not satisfy Source weapon compatibility.
 - [ ] Execute authored skeletal animation; model poses/recoil must not be substituted on the game path.

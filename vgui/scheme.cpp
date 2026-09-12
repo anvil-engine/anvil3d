@@ -42,7 +42,7 @@ bool Scheme::load(const FileSystem& fs, std::string_view path, std::string* erro
   const auto* scheme = tree->find("Scheme");
   auto fail = [&](std::string reason) { if (error) *error = std::string(path) + ": " + reason; return false; };
   if (!scheme || !scheme->block) return fail("missing Scheme block");
-  for (auto section : {"Colors", "BaseSettings", "Fonts", "CustomFontFiles"})
+  for (auto section : {"Colors", "BaseSettings", "Fonts", "CustomFontFiles", "Borders"})
     if (const auto* node = scheme->find(section); node && !node->block)
       return fail(std::string(section) + " must be a block");
   std::vector<std::string> fontFiles;
@@ -85,6 +85,51 @@ std::optional<Color> Scheme::color(std::string_view name, std::string* error) co
     name = value->value;
   }
 }
+std::optional<Border> Scheme::border(std::string_view name, std::string* error) const {
+  const auto original = name;
+  auto fail = [&](std::string reason) -> std::optional<Border> {
+    if (error) *error = "scheme border " + std::string(original) + ": " + std::move(reason);
+    return {};
+  };
+  const auto* borders = data_.find("Borders");
+  if (!borders || !borders->block) return fail("missing Borders block");
+  std::vector<std::string_view> chain;
+  const KeyValues* definition = nullptr;
+  for (;;) {
+    if (name.empty() || chain.size() >= 64) return fail("invalid alias depth");
+    if (std::any_of(chain.begin(), chain.end(), [&](auto prior) { return iequals(prior, name); }))
+      return fail("alias cycle");
+    chain.push_back(name);
+    definition = borders->find(name);
+    if (!definition) return fail("missing value " + std::string(name));
+    if (definition->block) break;
+    name = definition->value;
+  }
+  Border result;
+  constexpr std::pair<std::string_view, BorderSide> sides[] = {
+    {"Left",BorderSide::Left},{"Top",BorderSide::Top},{"Right",BorderSide::Right},{"Bottom",BorderSide::Bottom}
+  };
+  for (const auto& [sideName, side] : sides) {
+    const auto* layers = definition->find(sideName);
+    if (!layers) continue;
+    if (!layers->block || layers->children.size() > 64) return fail(std::string(sideName) + ": invalid layers");
+    for (const auto& layer : layers->children) {
+      if (!layer.block) return fail(std::string(sideName) + "/" + layer.key + ": expected block");
+      auto resolved = color(layer.get("color"), error);
+      if (!resolved) return {};
+      int x = 0, y = 0;
+      const auto offset = numbers(layer.get("offset"), 2);
+      if (!offset || (!offset->empty() && offset->size() != 2) ||
+          (!offset->empty() && ((*offset)[0] > 16384 || (*offset)[1] > 16384)))
+        return fail(std::string(sideName) + "/" + layer.key + ": invalid offset");
+      if (!offset->empty()) { x = int((*offset)[0]); y = int((*offset)[1]); }
+      result.lines.push_back({side,*resolved,x,y});
+      if (result.lines.size() > 256) return fail("line count exceeds 256");
+    }
+  }
+  if (result.lines.empty()) return fail("no side layers");
+  return result;
+}
 std::optional<std::vector<const KeyValues*>> Scheme::fontCandidates(std::string_view name, int screenHeight,
                                                                   uint32_t character, std::string* error) const {
   auto fail = [&](std::string reason) -> std::optional<std::vector<const KeyValues*>> {
@@ -115,5 +160,20 @@ std::optional<std::vector<const KeyValues*>> Scheme::fontCandidates(std::string_
     if (matches) candidates.push_back(&variant);
   }
   return candidates;
+}
+std::vector<std::string> Scheme::fontFamilyNames() const {
+  std::vector<std::string> names;
+  const auto* fonts = data_.find("Fonts");
+  if (!fonts) return names;
+  for (const auto& font : fonts->children) {
+    const auto variants = font.find("name") ? std::span<const KeyValues>(&font,1) :
+                                             std::span<const KeyValues>(font.children);
+    for (const auto& variant : variants) {
+      const auto name = variant.get("name");
+      if (!name.empty() && std::none_of(names.begin(),names.end(),[&](const auto& prior){return iequals(prior,name);}))
+        names.emplace_back(name);
+    }
+  }
+  return names;
 }
 } // namespace anvil::vgui

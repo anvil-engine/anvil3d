@@ -80,6 +80,22 @@ int number(std::string_view text) {
   auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), result);
   return error == std::errc{} && end == text.data() + text.size() ? result : 0;
 }
+bool layoutValue(std::string_view text, bool extent, LayoutValue& out) {
+  out = {};
+  if (text.empty()) return true;
+  if (text.front() == 'c') { if (extent) return false; out.mode = LayoutMode::Center; text.remove_prefix(1); }
+  else if (text.front() == 'r' || text.front() == 'f') {
+    if ((text.front() == 'f') != extent) return false;
+    out.mode = LayoutMode::Far; text.remove_prefix(1);
+  }
+  if (text.empty()) return false;
+  auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), out.offset);
+  return ec == std::errc{} && end == text.data() + text.size() && out.offset >= -16384 && out.offset <= 16384;
+}
+bool integer(std::string_view text, int& out) {
+  auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), out);
+  return !text.empty() && ec == std::errc{} && end == text.data() + text.size();
+}
 }
 std::optional<std::string> resourceText(std::string_view bytes, std::string* error) {
   auto fail = [&](const char* reason) -> std::optional<std::string> { if (error) *error = reason; return {}; };
@@ -146,5 +162,80 @@ std::vector<MenuItem> menuItems(const KeyValues& resource, const Localization& l
   }
   if (state.inGame) std::stable_sort(items.begin(), items.end(), [](const auto& a, const auto& b) { return a.inGameOrder < b.inGameOrder; });
   return items;
+}
+std::optional<std::vector<PanelResource>> panelResources(const KeyValues& resource,
+                                                         const Localization& localization,
+                                                         std::string* error) {
+  auto fail = [&](std::string reason) -> std::optional<std::vector<PanelResource>> {
+    if (error) *error = std::move(reason); return {};
+  };
+  if (resource.children.size() != 1 || !resource.children.front().block)
+    return fail("panel resource must contain one root block");
+  const KeyValues& root = resource.children.front();
+  if (root.children.size() > 4096) return fail(root.key + ": panel count exceeds 4096");
+  std::vector<PanelResource> panels;
+  panels.reserve(root.children.size());
+  for (const KeyValues& node : root.children) {
+    if (!node.block) continue;
+    PanelResource panel;
+    panel.id = node.key;
+    panel.controlName = std::string(node.get("ControlName"));
+    panel.fieldName = std::string(node.get("fieldName", node.key));
+    panel.label = localization.resolve(node.get("labelText", node.get("label")));
+    panel.title = localization.resolve(node.get("title"));
+    panel.command = std::string(node.get("Command", node.get("command")));
+    panel.textAlignment = std::string(node.get("textAlignment"));
+    panel.font = std::string(node.get("font"));
+    panel.border = std::string(node.get("border"));
+    panel.foreground = std::string(node.get("fgcolor"));
+    panel.background = std::string(node.get("bgcolor"));
+    const struct { const char* name; bool fallback; bool PanelResource::*member; } flags[] = {
+      {"visible", true, &PanelResource::visible}, {"enabled", true, &PanelResource::enabled},
+      {"Default", false, &PanelResource::defaultButton}
+    };
+    for (const auto& flag : flags) {
+      const auto value = node.get(flag.name);
+      panel.*flag.member = flag.fallback;
+      int parsed = 0;
+      if (!value.empty() && (!integer(value, parsed) || (parsed != 0 && parsed != 1)))
+        return fail(node.key + ": invalid " + flag.name + " " + std::string(value));
+      if (!value.empty()) panel.*flag.member = parsed != 0;
+    }
+    const auto tab = node.get("tabPosition");
+    if (!tab.empty()) {
+      if (!integer(tab, panel.tabPosition) || panel.tabPosition < 0 || panel.tabPosition > 4096)
+        return fail(node.key + ": invalid tabPosition " + std::string(tab));
+    }
+    const struct { const char* name; bool extent; LayoutValue PanelResource::*member; } fields[] = {
+      {"xpos", false, &PanelResource::x}, {"ypos", false, &PanelResource::y},
+      {"wide", true, &PanelResource::wide}, {"tall", true, &PanelResource::tall}
+    };
+    for (const auto& field : fields) {
+      const auto value = node.get(field.name);
+      if (!layoutValue(value, field.extent, panel.*field.member))
+        return fail(node.key + ": invalid " + field.name + " " + std::string(value));
+    }
+    panels.push_back(std::move(panel));
+  }
+  return panels;
+}
+std::optional<PanelRect> resolvePanelRect(const PanelResource& panel, int parentWide, int parentTall,
+                                          std::string* error) {
+  auto fail = [&](const char* reason) -> std::optional<PanelRect> { if (error) *error = reason; return {}; };
+  if (parentWide < 0 || parentTall < 0 || parentWide > 16384 || parentTall > 16384)
+    return fail("invalid panel parent bounds");
+  auto position = [](LayoutValue value, int parent) {
+    if (value.mode == LayoutMode::Center) return parent / 2 + value.offset;
+    if (value.mode == LayoutMode::Far) return parent - value.offset;
+    return value.offset;
+  };
+  PanelRect rect;
+  rect.x = position(panel.x, parentWide); rect.y = position(panel.y, parentTall);
+  rect.wide = panel.wide.mode == LayoutMode::Far ? parentWide - rect.x - panel.wide.offset : panel.wide.offset;
+  rect.tall = panel.tall.mode == LayoutMode::Far ? parentTall - rect.y - panel.tall.offset : panel.tall.offset;
+  if (rect.x < -16384 || rect.y < -16384 || rect.wide < 0 || rect.tall < 0 ||
+      rect.x > 16384 || rect.y > 16384 || rect.wide > 16384 || rect.tall > 16384)
+    return fail("resolved panel rectangle is outside supported bounds");
+  return rect;
 }
 } // namespace anvil::vgui

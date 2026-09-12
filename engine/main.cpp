@@ -14,6 +14,8 @@
 #include "gameplay/menu.h"
 #include "vgui/resources.h"
 #include "vgui/scheme.h"
+#include "vgui/font.h"
+#include "vgui/panel.h"
 
 #include <algorithm>
 #include <chrono>
@@ -83,6 +85,9 @@ int main(int argc, char** argv) {
   gameplay::Combat combat;
   gameplay::CombatView combatView;
   gameplay::Menu menu;
+  render::Batch2D vguiDiagnosticBatch;
+  std::vector<render::TextureHandle> vguiDiagnosticTextures;
+  std::vector<render::Batch2D> vguiDiagnosticText;
   const bool diagnosticPlay = cmdline.has("-diagnosticplay");
   menu.visible = diagnosticPlay;
   if (diagnosticPlay) ANVIL_WARN("diagnostic", "Independent combat/menu test enabled; NOT Source game behavior or game UI");
@@ -166,6 +171,75 @@ int main(int argc, char** argv) {
       }
     }
   }, "Load original resource tree including #base/#include; report authored controls");
+  console.addCommand("vgui_panel", [&](const Console::Args& args) {
+    if (args.size()!=4&&args.size()!=5)
+      return ANVIL_WARN("vgui","usage: vgui_panel <virtual-path> <parent-wide> <parent-tall> [scheme-path]");
+    int wide=0,tall=0;
+    auto parseDimension=[](const std::string& value,int& result) {
+      auto [end,ec]=std::from_chars(value.data(),value.data()+value.size(),result);
+      return ec==std::errc{}&&end==value.data()+value.size()&&result>0&&result<=16384;
+    };
+    if (!parseDimension(args[2],wide)||!parseDimension(args[3],tall))
+      return ANVIL_WARN("vgui","Panel parent dimensions must be in 1..16384");
+    if (device) for (const auto texture:vguiDiagnosticTextures) device->destroyTexture(texture);
+    vguiDiagnosticTextures.clear();vguiDiagnosticText.clear();vguiDiagnosticBatch.clear();
+    std::string error;
+    vgui::Localization localization;
+    if (!localization.load(fsys,"resource/gameui_english.txt",&error))
+      ANVIL_WARN("vgui","Localization unavailable: %s",error.c_str());
+    auto tree=vgui::loadResource(fsys,args[1],&error);
+    if (!tree) return ANVIL_ERROR("vgui","%s",error.c_str());
+    auto descriptors=vgui::panelResources(*tree,localization,&error);
+    if (!descriptors) return ANVIL_ERROR("vgui","%s",error.c_str());
+    auto runtime=vgui::PanelRuntime::instantiate(std::move(*descriptors),wide,tall,&error);
+    if (!runtime) return ANVIL_ERROR("vgui","%s",error.c_str());
+    for (const auto& control:runtime->controls()) {
+      const char* kind=control.kind==vgui::ControlKind::Panel?"Panel":
+                       control.kind==vgui::ControlKind::Label?"Label":
+                       control.kind==vgui::ControlKind::Button?"Button":
+                       control.kind==vgui::ControlKind::Divider?"Divider":"UNSUPPORTED";
+      const auto level=control.kind==vgui::ControlKind::Unsupported?log::Level::Warning:log::Level::Info;
+      log::write(level,"vgui","Original control %s: %s/%s rect=%d,%d %dx%d tab=%d command=%s",
+                 control.resource.id.c_str(),kind,control.resource.controlName.c_str(),
+                 control.bounds.x,control.bounds.y,control.bounds.wide,control.bounds.tall,
+                 control.resource.tabPosition,control.resource.command.c_str());
+    }
+    vgui::Scheme scheme;
+    const std::string schemePath=args.size()==5?args[4]:"resource/sourcescheme.res";
+    if (!scheme.load(fsys,schemePath,&error)) ANVIL_WARN("vgui","Panel Scheme unavailable: %s",error.c_str());
+    else if (auto paint=runtime->paint(scheme,&error)) {
+      ANVIL_INFO("vgui","Original paint plan: %zu fills, %zu borders, %zu text runs, %zu unsupported controls",
+                 paint->solids.size(),paint->borders.size(),paint->text.size(),paint->unsupported);
+      uint32_t targetWide=uint32_t(wide),targetTall=uint32_t(tall);
+      if (device) device->targetSize(targetWide,targetTall);
+      const int originX=(int(targetWide)-wide)/2,originY=(int(targetTall)-tall)/2;
+      auto batch=vgui::paintBatch(*paint,originX,originY,{0,0,int32_t(targetWide),int32_t(targetTall)},&error);
+      if (batch) vguiDiagnosticBatch=std::move(*batch);
+      else ANVIL_WARN("vgui","Panel batch incomplete: %s",error.c_str());
+      if (device) {
+        vgui::FontLibrary fonts;
+        const auto custom=fonts.loadCustomFiles(fsys,scheme);
+        const auto system=fonts.loadSystemFonts(scheme);
+        size_t drawn=0;
+        for (const auto& text:paint->text) {
+          auto bitmap=fonts.rasterizeText(scheme,text.font,int(targetTall),text.text,&error);
+          if (!bitmap) { ANVIL_WARN("vgui","Text %s unavailable: %s",text.text.c_str(),error.c_str()); continue; }
+          const auto texture=device->createTexture(vgui::textTexture(*bitmap));
+          if (!texture) continue;
+          auto textDraw=vgui::paintTextBatch(texture,*bitmap,text,originX,originY,
+                                             {0,0,int32_t(targetWide),int32_t(targetTall)});
+          if (textDraw.indices.empty()) { device->destroyTexture(texture); continue; }
+          vguiDiagnosticTextures.push_back(texture);
+          vguiDiagnosticText.push_back(std::move(textDraw));
+          ++drawn;
+        }
+        ANVIL_INFO("vgui","Original text: %zu/%zu runs uploaded; custom faces %zu, exact system faces %zu from %zu files",
+                   drawn,paint->text.size(),custom.faces,system.faces,system.files);
+        if (system.truncated) ANVIL_WARN("vgui","System font scan reached its safety limit");
+      }
+    } else ANVIL_WARN("vgui","Panel paint plan incomplete: %s",error.c_str());
+    ANVIL_WARN("vgui","PARTIAL diagnostic view: unsupported controls and command dispatch are not implemented");
+  }, "Instantiate supported original panel controls and report unsupported types");
   console.addCommand("vgui_scheme", [&](const Console::Args& args) {
     if (args.size()!=4) return ANVIL_WARN("vgui","usage: vgui_scheme <virtual-path> <font-name> <screen-height>");
     int height=0;
@@ -181,8 +255,15 @@ int main(int argc, char** argv) {
       ANVIL_INFO("vgui","Original scheme font %s/%s: family=%s tall=%s weight=%s (U+0041, height=%d)",
                  args[2].c_str(),font->key.c_str(),std::string(font->get("name")).c_str(),
                  std::string(font->get("tall")).c_str(),std::string(font->get("weight")).c_str(),height);
-    ANVIL_INFO("vgui","%zu font candidates, %zu declared custom font files",candidates->size(),scheme.customFontFiles().size());
-    ANVIL_WARN("vgui","Scheme interpretation only; font face loading/rasterization and panels are not implemented");
+    vgui::FontLibrary fonts;
+    const auto loaded=fonts.loadCustomFiles(fsys,scheme);
+    ANVIL_INFO("vgui","%zu font candidates; loaded %zu/%zu original custom font files (%zu faces, %zu missing, %zu invalid)",
+               candidates->size(),loaded.files,loaded.declared,loaded.faces,loaded.missing,loaded.invalid);
+    if (auto glyph=fonts.rasterize(scheme,args[2],height,'A',&error))
+      ANVIL_INFO("vgui","Original glyph U+0041 rasterized: %ux%u, bearing %d,%d, advance %d",
+                 glyph->width,glyph->height,glyph->left,glyph->top,glyph->advance);
+    else ANVIL_WARN("vgui","Original glyph U+0041 unavailable: %s",error.c_str());
+    ANVIL_WARN("vgui","Font inspection only; proportional scaling, atlases, text layout and panels are not implemented");
   }, "Inspect authored scheme font fallbacks for a screen height (no font substitution)");
   Clock clock;
   console.addVar("host_timescale", "1.0", "Simulation speed multiplier",
@@ -317,6 +398,8 @@ int main(int argc, char** argv) {
         if (diagnosticPlay && simulation) combatView.draw(*level,*simulation,combat,camera,float(pw)/float(ph),!menu.visible && !freeCamera);
       }
       if (diagnosticPlay) device->draw2d(gameplay::interfaceBatch(menu,combat,camera,pw,ph,level != nullptr));
+      if (!vguiDiagnosticBatch.indices.empty()) device->draw2d(vguiDiagnosticBatch);
+      for (const auto& text:vguiDiagnosticText) device->draw2d(text);
       if (devuiOn && lw) devui::frame(float(lw), float(lh), float(pw) / float(lw), float(dt));
       device->endFrame();
     }
@@ -326,6 +409,7 @@ int main(int argc, char** argv) {
   devui::shutdown();
   simulation.reset();
   level.reset();  // releases its GPU resources and unmounts its pakfile
+  if (device) for (const auto texture:vguiDiagnosticTextures) device->destroyTexture(texture);
   device.reset(); // before the window: the surface belongs to it
   ANVIL_INFO("engine", "Shutdown");
   return 0;

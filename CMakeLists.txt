@@ -66,8 +66,8 @@ if(ANVIL_DEVUI)
   target_compile_definitions(anvil_devui PRIVATE ANVIL_DEVUI=1)
 endif()
 
-add_library(anvil_vgui STATIC vgui/resources.cpp vgui/scheme.cpp)
-target_link_libraries(anvil_vgui PUBLIC anvil_filesystem anvil_common)
+add_library(anvil_vgui STATIC vgui/resources.cpp vgui/scheme.cpp vgui/font.cpp vgui/panel.cpp)
+target_link_libraries(anvil_vgui PUBLIC anvil_filesystem anvil_common anvil_render PRIVATE freetype)
 
 add_library(anvil_gameplay STATIC gameplay/combat.cpp gameplay/menu.cpp)
 target_link_libraries(anvil_gameplay PUBLIC anvil_world anvil_physics)
@@ -109,9 +109,9 @@ if(ANVIL_HL2_DIR)
   add_test(NAME vmt_hl2 COMMAND test_vmt ${ANVIL_HL2_VPKS} ${ANVIL_HL2_MAPS})
   add_test(NAME studio_hl2 COMMAND test_studio ${ANVIL_HL2_VPKS})
   add_test(NAME source_inspection_hl2 COMMAND anvil -basedir "${ANVIL_HL2_DIR}" -game hl2 -norender -frames 3
-    +map d1_trainstation_01 +vgui_menu)
+    +map d1_trainstation_01 +vgui_menu +vgui_panel resource/newgamedialog.res 600 296)
   set_tests_properties(source_inspection_hl2 PROPERTIES ENVIRONMENT SDL_VIDEO_DRIVER=dummy
-    PASS_REGULAR_EXPRESSION "Original menu entry" FAIL_REGULAR_EXPRESSION "Independent combat;practice objects;Pistol;DIAGNOSTIC")
+    PASS_REGULAR_EXPRESSION "Original control Play: Button/Button" FAIL_REGULAR_EXPRESSION "Independent combat;practice objects;Pistol;DIAGNOSTIC")
   add_test(NAME vgui_hl2 COMMAND test_vgui "${ANVIL_HL2_DIR}")
   add_test(NAME gameplay_hl2 COMMAND test_gameplay "${ANVIL_HL2_DIR}")
   add_test(NAME physics_hl2 COMMAND test_physics "${ANVIL_HL2_DIR}")

@@ -185,3 +185,36 @@ REASON: The original-content directive prohibits substituting authored game data
 IMPACT: Missing static-prop PHY collision is logged and omitted. Triangle collision remains available only in explicitly enabled diagnostics; implement the real PHY format next for those props.
 # VGUI scheme interpretation (2026-09-12)
 Reuse the VGUI resource loader and KeyValues tree to resolve Colors/BaseSettings references and filter original font variants. Return authored nodes in fallback order rather than inventing font metrics or substituting a font. Real SourceSchemeBase contains both numbered font variants and direct face definitions; support both generically. Actual glyph availability, proportional sizing, rendering and borders are separate remaining work. The diagnostic command exposes authored candidates and explicitly reports that font execution is unsupported.
+
+DECISION: FreeType 2.14.3 rasterizes CustomFontFiles loaded as memory faces from the Source VFS.
+REASON: It is the smallest portable, maintained implementation of TTF/OpenType parsing and glyph rasterization; using memory faces preserves VPK/loose-file lookup semantics and avoids host paths or copied game assets.
+IMPACT: Original custom faces and metrics work. System font discovery, bitmap VBF, shaping, proportional scaling, authored font effects, atlas upload and panel drawing remain explicit gaps. Font inputs are capped at 64 MiB each, 256 MiB total and 64 faces per collection.
+
+DECISION: Initial VGUI text rendering composes each bounded single-line UTF-8 run into one immutable RGBA8 coverage texture and one `Batch2D` quad.
+REASON: This uses the existing renderer without adding texture-update APIs or a speculative atlas cache before real panels establish lifetime and reuse patterns.
+IMPACT: Original custom-font text can reach the renderer now. It deliberately lacks kerning/shaping, wrapping, accelerators and scheme effects; add a persistent glyph atlas when panels make repeated text uploads measurable.
+
+# VGUI panel resource model (2026-09-12)
+DECISION: Interpret original panel blocks into a backend-neutral descriptor before building control classes. Preserve authored identity, control type, text, command, state, focus order and geometry; resolve the `cN`, `rN` and `fN` forms observed in installed resources only when parent bounds are known.
+REASON: This establishes a checked data boundary for real resources without recreating layouts or committing to a speculative widget hierarchy.
+IMPACT: NewGameDialog and OptionsSubKeyboard descriptors load from installed HL2. Painting, input/focus behavior, borders, control-specific properties and command dispatch remain explicit next work.
+
+DECISION: The first control runtime recognizes only common Panel/EditablePanel/Frame, Label, Button and Divider types. Unknown classes remain explicit Unsupported instances.
+REASON: Game-specific controls need their own semantics; treating them as generic panels would silently fake compatibility. Common buttons can already use authored visibility, enabled state, tab order, bounds and commands.
+IMPACT: Original layouts now produce navigable control instances and activation results without executing commands. The diagnostic `vgui_panel` command reports every unsupported type.
+
+DECISION: Panel painting begins as a backend-neutral plan of Scheme-derived fills, resolved border layers and text requests.
+REASON: Original Scheme data must choose colors, borders and fonts, while GPU texture ownership and batching remain renderer concerns. Unknown controls produce no substitute paint.
+IMPACT: Common controls have inspectable authored appearance semantics. Border aliases and layered sides are bounded and validated; GPU submission and unsupported control-specific painting remain next.
+
+DECISION: Solid panel paint is flattened into one untextured `Batch2D`; an origin places local resource coordinates and one clip bounds the parent.
+REASON: The existing 2D path already provides ordered alpha-blended triangles and scissoring, so a second surface renderer is unnecessary.
+IMPACT: Original Scheme fills and borders reach Vulkan and are pixel-tested. Text stays separate because each current rasterized run owns a texture; persistent atlas work remains later.
+
+DECISION: Resolve system fonts by scanning bounded OS font directories and retaining only FreeType family/style metadata that exactly matches an authored Scheme candidate.
+REASON: Source schemes intentionally name platform fonts such as Verdana and Tahoma. Exact matching executes that intent without silently substituting another typeface.
+IMPACT: SourceScheme Default text renders on supported hosts. The scan caps 4096 files, 64 faces per collection and 256 retained faces; missing exact families remain explicit errors.
+
+DECISION: Current panel text submission uses one immutable RGBA8 texture and one clipped quad per authored run.
+REASON: This reuses the already validated text primitive and makes the original dialog visible before repeated workloads justify an atlas.
+IMPACT: NewGameDialog uploads all visible labels with original localization, Scheme font/color and alignment. Texture ownership is explicit; atlas reuse, shaping and effects remain later.

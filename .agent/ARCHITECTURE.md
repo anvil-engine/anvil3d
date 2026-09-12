@@ -18,7 +18,7 @@ Source game DLLs (client/server)
 - devui/    Dear ImGui developer overlay (optional, ANVIL_DEVUI). Internal only; not VGUI. Draws via render::2d.
 - physics/  Jolt Runtime + Scene; bodies, virtual player, raycasts. Public API uses map units/Z-up; Jolt types and metre conversion stay in physics.cpp.
 - world/collision: BSP brush hull construction, terrain and initial static prop collision; independent of render visibility.
-- vgui/     Original resources/localization, menu data and scheme interpretation (color aliases, ordered font variants/ranges and custom font paths). Font rasterization, panel rendering and VGUI ABI are not implemented.
+- vgui/     Original resources/localization, menu, panel descriptors/basic control runtime and scheme interpretation; FreeType faces come from original VFS bytes or exact authored matches in bounded platform font directories. Focus/hit activation yields authored commands; scheme-derived fills/borders and clipped text runs submit through render::2d. Full text layout, persistent atlases, command dispatch and VGUI ABI are not implemented.
 - gameplay/ Independent combat/menu test rig, only via -diagnosticplay. Not Source game behavior.
 - compat/   Source-facing ABI: interface registry, CreateInterface. Later: engine interfaces for game DLLs.
 - engine/   entry point, console/cvars, clock, main loop.

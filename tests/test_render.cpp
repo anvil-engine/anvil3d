@@ -1,6 +1,7 @@
 // Renders render::2d batches on a headless device and checks the pixels. Exits 77 (skipped) without Vulkan.
 #include "materials/texture.h"
 #include "render/render.h"
+#include "vgui/panel.h"
 #include "check.h"
 
 #include <algorithm>
@@ -61,6 +62,21 @@ int main() {
 
   const Rect full{0, 0, int32_t(kSize), int32_t(kSize)};
   const float black[4] = {0, 0, 0, 1};
+  anvil::vgui::PaintPlan plan;
+  plan.solids.push_back({{8,8,24,24},{255,0,0,255}});
+  plan.borders.push_back({{8,8,24,24},{{{anvil::vgui::BorderSide::Left,{0,255,0,255},0,0},
+                                       {anvil::vgui::BorderSide::Bottom,{0,0,255,255},0,0}}}});
+  auto authored=anvil::vgui::paintBatch(plan,0,0,full);
+  CHECK(authored&&authored->cmds.size()==1);
+  CHECK(device->beginFrame(black));
+  if(authored) device->draw2d(*authored);
+  device->endFrame();
+  auto px=device->readPixels();
+  if(px.size()==kSize*kSize*4) {
+    CHECK(pixelNear(px,8,12,0,255,0));
+    CHECK(pixelNear(px,12,12,255,0,0));
+    CHECK(pixelNear(px,12,31,0,0,255));
+  }
   Batch2D batch;
   quad(batch, 0, 0, 32, 32, rgba(255, 0, 0, 255), 0, full);              // untextured: white * red
   quad(batch, 32, 0, 64, 32, rgba(255, 255, 255, 255), tex, full);       // 2x2 nearest texture
@@ -69,7 +85,7 @@ int main() {
   CHECK(device->beginFrame(black));
   device->draw2d(batch);
   device->endFrame();
-  auto px = device->readPixels();
+  px = device->readPixels();
   CHECK(px.size() == kSize * kSize * 4);
   if (px.size() == kSize * kSize * 4) {
     CHECK(pixelNear(px, 8, 8, 255, 0, 0));
