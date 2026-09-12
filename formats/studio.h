@@ -32,6 +32,16 @@ struct Sequence {
   std::string activityName;
   int32_t flags = 0;
   int32_t activity = 0;
+  std::vector<int16_t> animations;
+};
+
+struct Animation {
+  std::string name;
+  float fps = 0;
+  int32_t flags = 0;
+  int32_t frames = 0;
+  int32_t block = 0;
+  int32_t dataOffset = 0;
 };
 
 struct Bone {
@@ -52,6 +62,7 @@ struct Model {
   std::vector<std::string> materialDirs; // e.g. "models\props_c17/" (search in order, under materials/)
   std::vector<std::vector<int16_t>> skins; // [family][skinRef] -> index into materials
   std::vector<Bone> bones;
+  std::vector<Animation> animations;
   std::vector<Sequence> sequences;
   std::vector<Vertex> vertices;          // LOD 0 (after VVD fixups)
   std::vector<Mesh> meshes;

@@ -34,6 +34,8 @@ Buf makeMdl() {
   m.set(104, -1.0f);
   m.set(156, int32_t(1));    // numbones
   m.set(160, int32_t(1200)); // boneindex
+  m.set(180, int32_t(1));    // numlocalanim
+  m.set(184, int32_t(1450)); // localanimindex
   m.set(188, int32_t(1));   // numlocalseq
   m.set(192, int32_t(900)); // localseqindex
   m.set(204, int32_t(2));   // numtextures
@@ -68,6 +70,8 @@ Buf makeMdl() {
   m.set(908, int32_t(1140 - 900));
   m.set(912, int32_t(1));
   m.set(916, int32_t(7));
+  m.set(956, int32_t(1));
+  m.set(960, int32_t(200));
   m.str(1120, "idle");
   m.str(1140, "ACT_VM_IDLE");
   m.set(1200, int32_t(1420 - 1200));
@@ -76,6 +80,14 @@ Buf makeMdl() {
   m.set(1244 + 12, 1.0f); // quaternion w
   m.set(1360, uint32_t(0x100));
   m.str(1420, "root");
+  m.set(1454,int32_t(1570-1450));
+  m.set(1458,30.0f);
+  m.set(1462,int32_t(1));
+  m.set(1466,int32_t(10));
+  m.set(1502,int32_t(0));
+  m.set(1506,int32_t(80));
+  m.set(1100,int16_t(0));
+  m.str(1570,"idle_anim");
   return m;
 }
 
@@ -145,7 +157,7 @@ int main(int argc, char** argv) {
         if (p.size() > 4 && p.compare(p.size() - 4, 4, ".mdl") == 0) mdls.push_back(std::move(p));
       fsys.addArchive(std::move(vpk), argv[i], {"GAME"});
     }
-    size_t loaded = 0, noMesh = 0, tris = 0, sequences = 0, bones = 0;
+    size_t loaded = 0, noMesh = 0, tris = 0, sequences = 0, bones = 0, animations = 0;
     for (const std::string& path : mdls) {
       const std::string stem = path.substr(0, path.size() - 4);
       const auto mdl = fsys.readFile(path), vvd = fsys.readFile(stem + ".vvd"), vtx = fsys.readFile(stem + ".dx90.vtx");
@@ -161,10 +173,11 @@ int main(int argc, char** argv) {
       ++loaded;
       sequences += m->sequences.size();
       bones += m->bones.size();
+      animations += m->animations.size();
       for (const auto& mesh : m->meshes) tris += mesh.indices.size() / 3;
     }
-    std::printf("%zu models loaded, %zu without mesh files, %zu triangles, %zu bones, %zu local sequences\n",
-                loaded,noMesh,tris,bones,sequences);
+    std::printf("%zu models loaded, %zu without mesh files, %zu triangles, %zu bones, %zu sequences, %zu animations\n",
+                loaded,noMesh,tris,bones,sequences,animations);
     return TEST_RESULT();
   }
 
@@ -179,6 +192,8 @@ int main(int argc, char** argv) {
     CHECK(m->materials.size() == 2 && m->materials[1] == "quad_b");
     CHECK(m->sequences.size() == 1 && m->sequences[0].name == "idle" &&
           m->sequences[0].activityName == "ACT_VM_IDLE");
+    CHECK(m->animations.size()==1&&m->animations[0].name=="idle_anim"&&m->animations[0].frames==10&&
+          m->sequences[0].animations.size()==1&&m->sequences[0].animations[0]==0);
     CHECK(m->bones.size()==1&&m->bones[0].name=="root"&&m->bones[0].parent==-1&&
           m->bones[0].position[0]==1.0f&&m->bones[0].rotation[3]==1.0f);
     CHECK(m->materialDirs.size() == 1 && m->materialDirs[0] == "models/test/");

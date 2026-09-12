@@ -8,7 +8,8 @@ namespace anvil::studio {
 namespace {
 
 // On-disk record sizes (MDL v44-48 / VVD v4 / VTX v7; VTX records are byte-packed).
-constexpr int64_t kMdlTexture = 64, kMdlBodyPart = 16, kMdlMesh = 116, kMdlSequence = 212, kMdlBone = 216;
+constexpr int64_t kMdlTexture = 64, kMdlBodyPart = 16, kMdlMesh = 116, kMdlSequence = 212,
+                  kMdlBone = 216, kMdlAnimation = 100;
 constexpr int64_t kVvdVertex = 48, kVvdFixup = 12;
 constexpr int64_t kVtxBodyPart = 8, kVtxMesh = 9, kVtxStripGroup = 25, kVtxStrip = 27, kVtxVertex = 9;
 constexpr int32_t kMaxCount = 1 << 20; // sanity cap on every count read from a file
@@ -60,21 +61,51 @@ struct Loader {
       m.bones.push_back(std::move(bone));
     }
 
+    int32_t numAnimations=0,animationIndex=0;
+    rd(mdl,180,numAnimations,"");
+    rd(mdl,184,animationIndex,"");
+    if (!count(numAnimations,"bad animation count")) return false;
+    for (int32_t i=0;i<numAnimations;++i) {
+      const int64_t rec=int64_t(animationIndex)+int64_t(i)*kMdlAnimation;
+      int32_t nameOffset=0;
+      Animation animation;
+      std::string_view name;
+      if (!rd(mdl,rec+4,nameOffset,"animation out of range")||
+          !rd(mdl,rec+8,animation.fps,"animation out of range")||
+          !rd(mdl,rec+12,animation.flags,"animation out of range")||
+          !rd(mdl,rec+16,animation.frames,"animation out of range")||
+          !rd(mdl,rec+52,animation.block,"animation out of range")||
+          !rd(mdl,rec+56,animation.dataOffset,"animation out of range")||
+          !readCString(mdl,rec+nameOffset,name)) return fail("animation name out of range");
+      if (animation.frames<0||animation.frames>kMaxCount||animation.block<0) return fail("invalid animation metadata");
+      animation.name=name;
+      m.animations.push_back(std::move(animation));
+    }
+
     int32_t numSequences=0,sequenceIndex=0;
     rd(mdl,188,numSequences,"");
     rd(mdl,192,sequenceIndex,"");
     if (!count(numSequences,"bad sequence count")) return false;
     for (int32_t i=0;i<numSequences;++i) {
       const int64_t rec=int64_t(sequenceIndex)+int64_t(i)*kMdlSequence;
-      int32_t labelOffset=0,activityOffset=0;
+      int32_t labelOffset=0,activityOffset=0,numBlends=0,blendOffset=0;
       Sequence sequence;
       std::string_view label,activity;
       if (!rd(mdl,rec+4,labelOffset,"sequence out of range")||
           !rd(mdl,rec+8,activityOffset,"sequence out of range")||
           !rd(mdl,rec+12,sequence.flags,"sequence out of range")||
           !rd(mdl,rec+16,sequence.activity,"sequence out of range")||
+          !rd(mdl,rec+56,numBlends,"sequence out of range")||
+          !rd(mdl,rec+60,blendOffset,"sequence out of range")||
           !readCString(mdl,rec+labelOffset,label)||!readCString(mdl,rec+activityOffset,activity))
         return fail("sequence name out of range");
+      if (numBlends<0||numBlends>4096) return fail("invalid sequence blend count");
+      for (int32_t blend=0;blend<numBlends;++blend) {
+        int16_t animation=0;
+        if (!rd(mdl,rec+blendOffset+int64_t(blend)*2,animation,"sequence blend out of range")||animation<0)
+          return fail("invalid sequence animation index");
+        sequence.animations.push_back(animation);
+      }
       sequence.name=label;
       sequence.activityName=activity;
       m.sequences.push_back(std::move(sequence));

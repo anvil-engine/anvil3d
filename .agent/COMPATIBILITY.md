@@ -14,7 +14,7 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 | Materials   | PARTIAL     | NOT STARTED | NOT STARTED |
 | Textures    | PARTIAL (VTF->GPU; no frames/cubemaps/HDR) | NOT STARTED | NOT STARTED |
 | World render | PARTIAL (brush world, LightmappedGeneric-style, lightmaps, displacements, PVS/frustum, 2D sky, static brush entities, WVT blend, static props with ambient-only light; no 3D sky/water/decals/overlays) | NOT STARTED | NOT STARTED |
-| Models      | PARTIAL (LOD0 mesh, bind-pose skeleton and local sequence metadata; no animated pose decoding) | NOT STARTED | NOT STARTED |
+| Models      | PARTIAL (LOD0 mesh, bind-pose skeleton, sequence blends and local animation metadata; no frame pose decoding) | NOT STARTED | NOT STARTED |
 | Physics     | PARTIAL (Jolt walking, static BSP collision; PHY props unsupported; triangle approximation diagnostic only) | NOT STARTED | NOT STARTED |
 | VGUI        | PARTIAL (resources/localization, schemes, common panel runtime, font/text batching and limited authored-command dispatch) | NOT STARTED | NOT STARTED |
 | Weapon scripts | PARTIAL (manifest, core WeaponData paths/ammo/SoundData fields) | NOT STARTED | NOT STARTED |
