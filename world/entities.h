@@ -25,6 +25,7 @@ void transformBox(const Transform& t, const bsp::Vec3& mins, const bsp::Vec3& ma
 // An entity drawn with one of the map's brush models ("model" "*N", N >= 1). Brush model vertices are stored
 // relative to the entity origin (all HL2 maps), so `transform` places them.
 struct BrushEntity {
+  size_t entity = 0; // index in the BSP entity lump
   std::string classname;
   uint32_t model = 0; // index into map.models
   Transform transform;

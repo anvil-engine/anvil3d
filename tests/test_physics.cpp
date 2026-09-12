@@ -4,6 +4,7 @@
 #include "filesystem/filesystem.h"
 #include "filesystem/gameinfo.h"
 #include "check.h"
+#include <array>
 #include <cmath>
 #include <limits>
 using namespace anvil;
@@ -20,6 +21,19 @@ int main(int argc,char** argv) {
     auto p=scene.playerFeet();
     std::printf("settled feet: %.3f %.3f %.3f ground %d\n",p.x,p.y,p.z,scene.grounded());
     CHECK(scene.grounded()); CHECK(std::abs(p.z)<2);
+    const std::array overlappingHull{
+      physics::Vec3{-8,-8,0}, physics::Vec3{8,-8,0}, physics::Vec3{-8,8,0}, physics::Vec3{8,8,0},
+      physics::Vec3{-8,-8,16}, physics::Vec3{8,-8,16}, physics::Vec3{-8,8,16}, physics::Vec3{8,8,16}};
+    const std::array separateHull{
+      physics::Vec3{100,-8,0}, physics::Vec3{116,-8,0}, physics::Vec3{100,8,0}, physics::Vec3{116,8,0},
+      physics::Vec3{100,-8,16}, physics::Vec3{116,-8,16}, physics::Vec3{100,8,16}, physics::Vec3{116,8,16}};
+    const auto bodiesBeforeOverlap = scene.bodyCount();
+    CHECK(scene.playerOverlapsHull(overlappingHull));
+    CHECK(!scene.playerOverlapsHull(separateHull));
+    CHECK(!scene.playerOverlapsHull(std::span<const physics::Vec3>(overlappingHull.data(),3)));
+    auto invalidHull = overlappingHull; invalidHull[0].x = NAN;
+    CHECK(!scene.playerOverlapsHull(invalidHull));
+    CHECK(scene.bodyCount()==bodiesBeforeOverlap);
     for(int i=0;i<120;++i) scene.step(dt,{190,0,0});
     p=scene.playerFeet();
     std::printf("wall feet: %.3f %.3f %.3f\n",p.x,p.y,p.z);

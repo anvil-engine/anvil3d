@@ -45,7 +45,8 @@ void transformBox(const Transform& t, const bsp::Vec3& mins, const bsp::Vec3& ma
 
 std::vector<BrushEntity> brushEntities(const bsp::Map& map, const std::vector<bsp::Entity>& entities) {
   std::vector<BrushEntity> out;
-  for (const bsp::Entity& e : entities) {
+  for (size_t entity = 0; entity < entities.size(); ++entity) {
+    const bsp::Entity& e = entities[entity];
     const std::string_view model = e.get("model");
     if (model.empty() || model[0] != '*') continue; // studio models ("models/...mdl") are not brush entities
     uint64_t n = 0;
@@ -60,6 +61,7 @@ std::vector<BrushEntity> brushEntities(const bsp::Map& map, const std::vector<bs
       continue;
     }
     BrushEntity b;
+    b.entity = entity;
     b.classname = e.get("classname");
     b.model = uint32_t(n);
     std::sscanf(std::string(e.get("origin")).c_str(), "%f %f %f", &b.transform.origin.x, &b.transform.origin.y,

@@ -41,6 +41,7 @@ public:
   Vec3 playerFeet() const;
   Vec3 playerVelocity() const;
   bool grounded() const;
+  bool playerOverlapsHull(std::span<const Vec3> points) const;
   Vec3 bodyPosition(Body body) const;
   Pose bodyPose(Body body) const;
   std::optional<Hit> raycast(Vec3 origin, Vec3 displacement) const;

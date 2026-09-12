@@ -20,6 +20,7 @@ namespace anvil {
 class Archive;
 class FileSystem;
 } // namespace anvil
+namespace anvil::physics { class Scene; }
 
 namespace anvil::world {
 
@@ -55,6 +56,8 @@ public:
   void draw(const Camera& camera, float aspect, bool usePvs = true);
   // Advances delayed original entity outputs on the fixed simulation clock.
   void tick(float dt);
+  // Fires authored trigger_once outputs when the player's real Jolt shape overlaps an authored BSP hull.
+  void checkTriggers(const physics::Scene& scene);
   const DrawStats& stats() const { return stats_; } // of the last draw()
   Camera spawnPoint() const;                           // first info_player_start at eye height, else origin
   const bsp::Map& map() const { return map_; }
@@ -77,6 +80,7 @@ private:
   std::optional<render::Draw3D> material(const std::string& path, bool prop);
   void warnOnce(const std::string& message); // gaps logged once per map, not once per material
   void setupSky();
+  void setupTriggers();
   void startIo();
   void deliverInput(const InputDelivery& delivery);
   void appendVisible(uint32_t batch, std::vector<render::Draw3D>& out); // world batch, visible faces merged
@@ -93,6 +97,12 @@ private:
   std::unique_ptr<EntityIo> io_;
   double ioTime_ = 0;
   uint32_t ioDepth_ = 0;
+  struct TriggerOnce {
+    size_t entity = 0;
+    std::vector<std::vector<bsp::Vec3>> hulls;
+    bool fired = false;
+  };
+  std::vector<TriggerOnce> triggers_;
   // Parallel to Mesh::batches: the batch's whole index range with its material; faces [firstFace, +faceCount).
   struct Material {
     render::Draw3D draw;

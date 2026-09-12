@@ -14,6 +14,9 @@
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/CollideShape.h>
+#include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
+#include <Jolt/Physics/Collision/CollisionDispatch.h>
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -183,6 +186,28 @@ void Scene::step(float dt, Vec3 wish, bool jump) {
 Vec3 Scene::playerFeet() const { return impl_->character ? fromJ(impl_->character->GetPosition()) : Vec3{}; }
 Vec3 Scene::playerVelocity() const { return impl_->character ? fromJ(impl_->character->GetLinearVelocity()) : Vec3{}; }
 bool Scene::grounded() const { return impl_->character && impl_->character->GetGroundState() == JPH::CharacterBase::EGroundState::OnGround; }
+bool Scene::playerOverlapsHull(std::span<const Vec3> points) const {
+  if (!impl_->character || points.size() < 4) return false;
+  Vec3 center = points.front();
+  if (!finite(center)) return false;
+  JPH::ConvexHullShapeSettings hullSettings;
+  hullSettings.mMaxConvexRadius = 0;
+  for (auto point : points) {
+    if (!finite(point)) return false;
+    hullSettings.mPoints.push_back(toJ({point.x-center.x, point.y-center.y, point.z-center.z}));
+  }
+  auto hull = hullSettings.Create();
+  if (hull.HasError()) return false;
+
+  JPH::AnyHitCollisionCollector<JPH::CollideShapeCollector> hit;
+  JPH::CollideShapeSettings settings;
+  const auto playerCenter = impl_->character->GetPosition() + toJ({0,0,36});
+  JPH::CollisionDispatch::sCollideShapeVsShape(
+    impl_->character->GetShape(), hull.Get(), JPH::Vec3::sOne(), JPH::Vec3::sOne(),
+    JPH::Mat44::sTranslation(JPH::Vec3(playerCenter)), JPH::Mat44::sTranslation(toJ(center)),
+    JPH::SubShapeIDCreator(), JPH::SubShapeIDCreator(), settings, hit);
+  return hit.HadHit();
+}
 Vec3 Scene::bodyPosition(Body body) const { return body == invalidBody ? Vec3{} : fromJ(impl_->system.GetBodyInterface().GetPosition(JPH::BodyID(body))); }
 Pose Scene::bodyPose(Body body) const {
   if (body == invalidBody) return {{},0,0,0,1};

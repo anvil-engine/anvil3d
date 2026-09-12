@@ -8,6 +8,7 @@
 #include "formats/vtf.h"
 #include "materials/texture.h"
 #include "world/sky.h"
+#include "world/collision.h"
 #include "world/worldmesh.h"
 
 #include <algorithm>
@@ -98,6 +99,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   w->setupEntities(mesh);
   w->setupProps();
   w->setupSky();
+  w->setupTriggers();
   w->io_ = std::make_unique<EntityIo>(w->entityLump_);
   w->startIo();
   std::string ioError;
@@ -422,6 +424,18 @@ void World::setupSky() {
              skyDraws_.size());
 }
 
+void World::setupTriggers() {
+  for (const BrushEntity& entity : brushEntities(map_, entityLump_)) {
+    if (!iequals(entity.classname, "trigger_once")) continue;
+    auto hulls = modelHulls(map_, entity.model, entity.transform);
+    if (hulls.empty()) {
+      ANVIL_WARN("entity", "trigger_once %zu has no valid BSP hull", entity.entity);
+      continue;
+    }
+    triggers_.push_back({entity.entity, std::move(hulls)});
+  }
+}
+
 void World::startIo() {
   if (!io_) return;
   for (size_t i = 0; i < entityLump_.size(); ++i) {
@@ -442,7 +456,11 @@ void World::deliverInput(const InputDelivery& delivery) {
     return;
   }
   const auto& entity = entityLump_[delivery.target];
-  if (io_->isTimer(delivery.target)) {
+  if (iequals(entity.get("classname"), "trigger_once") && iequals(delivery.input, "Enable")) {
+    io_->setEnabled(delivery.target, true);
+  } else if (iequals(entity.get("classname"), "trigger_once") && iequals(delivery.input, "Disable")) {
+    io_->setEnabled(delivery.target, false);
+  } else if (io_->isTimer(delivery.target)) {
     std::string error;
     if (!io_->input(delivery.target, delivery.input, ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
       warnOnce("Unsupported entity input logic_timer." + delivery.input + ": " + error);
@@ -467,6 +485,22 @@ void World::tick(float dt) {
   if (!io_->tick(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); }, &error))
     ANVIL_WARN("entity", "logic_timer: %s", error.c_str());
   io_->dispatch(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); });
+}
+
+void World::checkTriggers(const physics::Scene& scene) {
+  if (!io_) return;
+  for (TriggerOnce& trigger : triggers_) {
+    if (trigger.fired || !io_->enabled(trigger.entity)) continue;
+    const bool overlap = std::any_of(trigger.hulls.begin(), trigger.hulls.end(),
+                                     [&](const auto& hull) { return scene.playerOverlapsHull(hull); });
+    if (!overlap) continue;
+    std::string error;
+    if (!io_->fire(trigger.entity, "OnStartTouch", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error)) {
+      ANVIL_WARN("entity", "trigger_once %zu OnStartTouch: %s", trigger.entity, error.c_str());
+      continue;
+    }
+    trigger.fired = true;
+  }
 }
 
 void World::draw(const Camera& camera, float aspect, bool usePvs) {
