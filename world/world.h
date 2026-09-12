@@ -3,6 +3,7 @@
 #include "formats/bsp.h"
 #include "render/render.h"
 #include "world/entities.h"
+#include "world/io.h"
 #include "world/props.h"
 #include "world/visibility.h"
 #include "world/worldmesh.h"
@@ -52,6 +53,8 @@ public:
 
   // Inside device beginFrame/endFrame. Submits PVS- and frustum-visible faces (usePvs false = frustum only).
   void draw(const Camera& camera, float aspect, bool usePvs = true);
+  // Advances delayed original entity outputs on the fixed simulation clock.
+  void tick(float dt);
   const DrawStats& stats() const { return stats_; } // of the last draw()
   Camera spawnPoint() const;                           // first info_player_start at eye height, else origin
   const bsp::Map& map() const { return map_; }
@@ -74,6 +77,8 @@ private:
   std::optional<render::Draw3D> material(const std::string& path, bool prop);
   void warnOnce(const std::string& message); // gaps logged once per map, not once per material
   void setupSky();
+  void startIo();
+  void deliverInput(const InputDelivery& delivery);
   void appendVisible(uint32_t batch, std::vector<render::Draw3D>& out); // world batch, visible faces merged
   render::TextureHandle texture(std::string_view name);
 
@@ -85,6 +90,9 @@ private:
   render::TextureHandle lightmap_ = 0, error_ = 0;
   std::unordered_map<std::string, render::TextureHandle> textures_; // key: materials/<name>.vtf
   std::vector<bsp::Entity> entityLump_;
+  std::unique_ptr<EntityIo> io_;
+  double ioTime_ = 0;
+  uint32_t ioDepth_ = 0;
   // Parallel to Mesh::batches: the batch's whole index range with its material; faces [firstFace, +faceCount).
   struct Material {
     render::Draw3D draw;

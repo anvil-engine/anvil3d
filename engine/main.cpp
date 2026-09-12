@@ -487,6 +487,7 @@ int main(int argc, char** argv) {
         const bsp::Vec3 wish{factor*(fwd*std::cos(y)+side*std::sin(y)), factor*(fwd*std::sin(y)-side*std::cos(y)), 0};
         for (int tick = 0; tick < ticks; ++tick) {
           simulation->step(float(clock.tickInterval()), wish, jumpPending);
+          level->tick(float(clock.tickInterval()));
           jumpPending = false;
           camera.origin = simulation->playerFeet(); camera.origin.z += 64;
           if (diagnosticPlay) combat.step(float(clock.tickInterval()), {input && (mouse || firePending),reloadPending,selectPending}, *simulation,camera);

@@ -98,6 +98,8 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   w->setupEntities(mesh);
   w->setupProps();
   w->setupSky();
+  w->io_ = std::make_unique<EntityIo>(w->entityLump_);
+  w->startIo();
   w->faces_ = mesh.faces;
   w->worldFaceCount_ = mesh.models.empty() ? 0 : mesh.models[0].faceCount; // model 0 sorts first
   w->visibility_ = std::make_unique<Visibility>(w->map_, std::span(w->faces_).first(w->worldFaceCount_));
@@ -416,6 +418,40 @@ void World::setupSky() {
   if (device_ && !skyDraws_.empty()) skyMesh_ = device_->createMesh(vertices, indices);
   ANVIL_INFO("world", "Sky %s: %zu of 6 faces (2D skybox only; sky_camera 3D skybox not rendered)", name.c_str(),
              skyDraws_.size());
+}
+
+void World::startIo() {
+  if (!io_) return;
+  for (size_t i = 0; i < entityLump_.size(); ++i) {
+    if (!iequals(entityLump_[i].get("classname"), "logic_auto")) continue;
+    std::string error;
+    if (!io_->fire(i, "OnMapSpawn", ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); }, &error))
+      ANVIL_WARN("entity", "logic_auto %zu OnMapSpawn: %s", i, error.c_str());
+  }
+}
+
+void World::deliverInput(const InputDelivery& delivery) {
+  if (!io_ || delivery.target >= entityLump_.size()) return;
+  if (++ioDepth_ > 128) {
+    warnOnce("Entity I/O recursion limit reached");
+    --ioDepth_;
+    return;
+  }
+  const auto& entity = entityLump_[delivery.target];
+  if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "Trigger")) {
+    std::string error;
+    if (!io_->fire(delivery.target, "OnTrigger", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
+      ANVIL_WARN("entity", "logic_relay %zu OnTrigger: %s", delivery.target, error.c_str());
+  } else {
+    warnOnce("Unsupported entity input " + std::string(entity.get("classname")) + "." + delivery.input);
+  }
+  --ioDepth_;
+}
+
+void World::tick(float dt) {
+  if (!io_ || !std::isfinite(dt) || dt <= 0) return;
+  ioTime_ += dt;
+  io_->dispatch(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); });
 }
 
 void World::draw(const Camera& camera, float aspect, bool usePvs) {
