@@ -40,6 +40,12 @@ int main() {
   io.dispatch(21.0, receive);
   CHECK(delivered.size() == 5);
 
+  entities[0].keys.push_back({"StartDisabled", "1"});
+  world::EntityIo disabled(entities);
+  CHECK(!disabled.enabled(0));
+  CHECK(disabled.setEnabled(0, true) && disabled.enabled(0));
+  CHECK(!disabled.setEnabled(99, true));
+
   entities[0].keys.push_back({"OnBroken", "door,Open,,oops,-1"});
   world::EntityIo malformed(entities);
   CHECK(!malformed.fire(0, "OnBroken", 0, receive, &error) && !error.empty());

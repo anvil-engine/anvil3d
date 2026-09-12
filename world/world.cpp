@@ -438,7 +438,11 @@ void World::deliverInput(const InputDelivery& delivery) {
     return;
   }
   const auto& entity = entityLump_[delivery.target];
-  if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "Trigger")) {
+  if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "Enable")) {
+    io_->setEnabled(delivery.target, true);
+  } else if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "Disable")) {
+    io_->setEnabled(delivery.target, false);
+  } else if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "Trigger") && io_->enabled(delivery.target)) {
     std::string error;
     if (!io_->fire(delivery.target, "OnTrigger", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
       ANVIL_WARN("entity", "logic_relay %zu OnTrigger: %s", delivery.target, error.c_str());

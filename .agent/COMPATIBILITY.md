@@ -11,7 +11,7 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 | Console     | PARTIAL     | NOT STARTED | NOT STARTED |
 | VPK         | WORKING     | UNKNOWN     | UNKNOWN     |
 | BSP         | PARTIAL (parse incl. brushes; no areaportals/water/overlays/cubemaps) | NOT STARTED | NOT STARTED |
-| Entity I/O  | PARTIAL (bounded generic outputs and delayed queue; `logic_auto` spawn and `logic_relay` trigger dispatch only) | NOT STARTED | NOT STARTED |
+| Entity I/O  | PARTIAL (bounded generic outputs and delayed queue; `logic_auto` spawn and `logic_relay` trigger/enable/disable dispatch) | NOT STARTED | NOT STARTED |
 | Materials   | PARTIAL     | NOT STARTED | NOT STARTED |
 | Textures    | PARTIAL (VTF->GPU; no frames/cubemaps/HDR) | NOT STARTED | NOT STARTED |
 | World render | PARTIAL (brush world, LightmappedGeneric-style, lightmaps, displacements, PVS/frustum, 2D sky, static brush entities, WVT blend, static props with ambient-only light; no 3D sky/water/decals/overlays) | NOT STARTED | NOT STARTED |
@@ -35,7 +35,7 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 - WorldVertexTransition: linear vertex-alpha blend, direction checked against HL2 terrain data; $blendmodulatetexture / $basetexturetransform2 ignored (PARTIAL).
 - Static props: placement and materials PARTIAL; lighting is a per-prop leaf-ambient approximation (no direct light, no VHV), not verified against Source output; fade = hard cull at fademaxdist.
 - Brush entity placement: origin-relative models verified on HL2 data; angle rotation (esp. roll sign) UNVERIFIED; no entity render modes.
-- Entity I/O: output fields target, input, parameter, delay and fire count are parsed with bounds checks; delayed deliveries use the fixed simulation clock. Only `logic_auto` `OnMapSpawn` and `logic_relay` `Trigger` are dispatched; other inputs remain explicit unsupported warnings, and retail gameplay is not executed.
+- Entity I/O: output fields target, input, parameter, delay and fire count are parsed with bounds checks; delayed deliveries use the fixed simulation clock. `logic_auto` `OnMapSpawn` and `logic_relay` `Trigger`, `Enable`, and `Disable` are dispatched, with `StartDisabled` honored; other inputs remain explicit unsupported warnings, and retail gameplay is not executed.
 - Shader behavior (LightmappedGeneric, UnlitGeneric, sky, fallbacks for other shaders): anvil interpretation, not verified against Source output.
 - Animated model submission: authored CPU-skinned vertex attributes use one host-visible buffer per frame slot and reuse static index buffers; external/sectioned animation data, blending and retail weapon behavior remain unsupported.
 

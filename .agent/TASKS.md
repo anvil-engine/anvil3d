@@ -27,7 +27,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
   - [x] Submit CPU-skinned authored frames to the renderer in the opt-in viewmodel diagnostic using per-frame host-visible vertex buffers with static indices.
 - [ ] Execute authored skeletal animation; model poses/recoil must not be substituted on the game path.
 - [ ] Instantiate authored entities and generic delayed I/O (no map-specific event chains).
-  - [x] Parse bounded target/input/parameter/delay/fire-count outputs, queue delayed deliveries, and dispatch `logic_auto` `OnMapSpawn` / `logic_relay` `Trigger`.
+  - [x] Parse bounded target/input/parameter/delay/fire-count outputs, queue delayed deliveries, and dispatch `logic_auto` `OnMapSpawn` / `logic_relay` `Trigger`; honor `StartDisabled`, `Enable`, and `Disable`.
   - [ ] Implement additional authored entity input handlers and entity behavior; unsupported inputs remain visible warnings.
 - [ ] Original sound resources/scripts and audio playback.
 - [ ] PHY collision, entity physics/parenting, Source movement semantics, triggers and progression driven by map data.

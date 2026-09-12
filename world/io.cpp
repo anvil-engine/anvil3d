@@ -66,8 +66,20 @@ std::optional<Output> parseOutput(std::string_view value, std::string* error) {
 }
 
 EntityIo::EntityIo(const std::vector<bsp::Entity>& entities) : entities_(entities) {
+  enabled_.reserve(entities.size());
   remaining_.reserve(entities.size());
-  for (const bsp::Entity& entity : entities) remaining_.emplace_back(entity.keys.size(), -2);
+  for (const bsp::Entity& entity : entities) {
+    enabled_.push_back(!equalInsensitive(entity.get("StartDisabled"), "1"));
+    remaining_.emplace_back(entity.keys.size(), -2);
+  }
+}
+
+bool EntityIo::enabled(size_t entity) const { return entity < enabled_.size() && enabled_[entity]; }
+
+bool EntityIo::setEnabled(size_t entity, bool enabled) {
+  if (entity >= enabled_.size()) return false;
+  enabled_[entity] = enabled;
+  return true;
 }
 
 bool EntityIo::fire(size_t source, std::string_view output, double now, const Callback& callback, std::string* error) {

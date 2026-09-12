@@ -36,6 +36,8 @@ public:
 
   bool fire(size_t source, std::string_view output, double now, const Callback& callback, std::string* error = nullptr);
   void dispatch(double now, const Callback& callback);
+  bool enabled(size_t entity) const;
+  bool setEnabled(size_t entity, bool enabled);
 
 private:
   struct Pending {
@@ -44,6 +46,7 @@ private:
   };
 
   const std::vector<bsp::Entity>& entities_;
+  std::vector<bool> enabled_;
   std::vector<std::vector<int>> remaining_;
   std::vector<Pending> pending_;
 };
