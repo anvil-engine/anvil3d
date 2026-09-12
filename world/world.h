@@ -69,7 +69,7 @@ public:
   // 0 = failed load; handles expire with the World. Bounds refer to the model's bind pose.
   uint32_t loadModel(std::string_view name);
   bool modelBounds(uint32_t model, bsp::Vec3& mins, bsp::Vec3& maxs) const;
-  bool animateModel(uint32_t model, std::string_view sequence, double time);
+  bool animateModel(uint32_t model, std::string_view sequence, double time, std::string* error = nullptr);
   void drawModel(uint32_t model, const render::Mat4& mvp, float tint = 1.0f);
 
 private:
@@ -77,6 +77,8 @@ private:
   void setupMaterials(const Mesh& mesh);
   void setupEntities(const Mesh& mesh);
   void setupProps();
+  void setupDynamicProps();
+  uint32_t loadModelAsset(std::string_view name, bool unique);
   std::optional<render::Draw3D> material(const std::string& path, bool prop);
   void warnOnce(const std::string& message); // gaps logged once per map, not once per material
   void setupSky();
@@ -103,6 +105,15 @@ private:
     bool fired = false;
   };
   std::vector<TriggerOnce> triggers_;
+  struct DynamicProp {
+    size_t entity = 0;
+    uint32_t model = 0;
+    Transform transform;
+    std::string modelPath;
+    std::string sequence;
+    double animationStart = 0;
+  };
+  std::vector<DynamicProp> dynamicProps_;
   // Parallel to Mesh::batches: the batch's whole index range with its material; faces [firstFace, +faceCount).
   struct Material {
     render::Draw3D draw;

@@ -22,7 +22,9 @@ The project is not affiliated with or endorsed by Valve Corporation.
 
 ## Status
 
-0.10.0, early development (M3 renderer in progress). Mounts loose files and VPK archives, runs configs, and renders HL2 BSP maps through Vulkan with textures, lightmaps, displacements, PVS/frustum culling, a 2D skybox, static brush entities, and ambient-lit static props. An independent Jolt player supports WASD walking, collision, gravity, jumping, and stairs; a free camera remains available through noclip. Original VGUI resource trees/localization can be inspected, but game UI execution, game DLL integration and gameplay entities are not implemented. It cannot run the HL2 game yet.
+Development snapshot after 0.10.0. Mounts loose files and VPK archives, runs configs, and renders HL2 BSP maps through Vulkan with textures, lightmaps, displacements, PVS/frustum culling, a 2D skybox, brush entities, and ambient-lit static props. Source model data is now read far enough for LOD0 meshes, skeletons, sequences, inline raw/RLE animation frames, CPU skinning, and diagnostic animated rendering. Bounded entity I/O supports `logic_auto`, `logic_relay`, `logic_timer`, and `trigger_once`; `prop_dynamic` instances can load authored models and respond to `Enable`, `Disable`, and `SetAnimation`.
+
+An independent Jolt player supports WASD walking, collision, gravity, jumping, stairs, and precise overlap checks; a free camera remains available through noclip. Original VGUI resources, schemes, localization, fonts, and a limited set of common panels can be inspected and rendered for diagnostics. These systems are compatibility foundations, not a working retail game: client/server DLLs, audio, networking, most gameplay entities, animation blending, external animation blocks, and many Source rendering features remain unsupported. HL2 campaign execution is not yet available.
 See [.agent/COMPATIBILITY.md](.agent/COMPATIBILITY.md).
 
 ## Build

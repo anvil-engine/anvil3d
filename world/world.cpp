@@ -29,6 +29,13 @@ std::string lower(std::string_view s) {
   return out;
 }
 
+Transform entityTransform(const bsp::Entity& entity) {
+  Transform out;
+  std::sscanf(std::string(entity.get("origin")).c_str(), "%f %f %f", &out.origin.x, &out.origin.y, &out.origin.z);
+  std::sscanf(std::string(entity.get("angles")).c_str(), "%f %f %f", &out.angles.x, &out.angles.y, &out.angles.z);
+  return out;
+}
+
 } // namespace
 
 render::Mat4 viewProjection(const Camera& camera, float aspect) {
@@ -98,6 +105,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   w->setupMaterials(mesh);
   w->setupEntities(mesh);
   w->setupProps();
+  w->setupDynamicProps();
   w->setupSky();
   w->setupTriggers();
   w->io_ = std::make_unique<EntityIo>(w->entityLump_);
@@ -126,8 +134,13 @@ World::~World() {
 }
 
 uint32_t World::loadModel(std::string_view name) {
+  return loadModelAsset(name, false);
+}
+
+uint32_t World::loadModelAsset(std::string_view name, bool unique) {
   const std::string key = lower(name);
-  if (auto found = modelHandles_.find(key); found != modelHandles_.end()) return found->second;
+  if (!unique)
+    if (auto found = modelHandles_.find(key); found != modelHandles_.end()) return found->second;
   auto geometry = loadPropGeometry(fs_, {key}, true);
   if (geometry.models.empty() || !geometry.models[0].loaded) return 0;
   const auto& model = geometry.models[0];
@@ -157,36 +170,40 @@ uint32_t World::loadModel(std::string_view name) {
   asset.indices = std::move(geometry.indices);
   modelAssets_.push_back(std::move(asset));
   const auto handle = uint32_t(modelAssets_.size());
-  modelHandles_[key] = handle;
+  if (!unique) modelHandles_[key] = handle;
   return handle;
 }
 
-bool World::animateModel(uint32_t model, std::string_view sequence, double time) {
-  if (!device_ || !model || model > modelAssets_.size() || !std::isfinite(time)) return false;
+bool World::animateModel(uint32_t model, std::string_view sequence, double time, std::string* error) {
+  auto fail = [&](std::string message) {
+    if (error) *error = std::move(message);
+    return false;
+  };
+  if (!device_ || !model || model > modelAssets_.size() || !std::isfinite(time)) return fail("invalid model or time");
   auto& asset = modelAssets_[model - 1];
   const auto wanted = lower(sequence);
   const auto found = std::find_if(asset.studio.sequences.begin(), asset.studio.sequences.end(), [&](const auto& item) {
     return lower(item.name) == wanted;
   });
-  if (found == asset.studio.sequences.end() || found->animations.empty()) return false;
+  if (found == asset.studio.sequences.end() || found->animations.empty()) return fail("sequence is unavailable");
   const int animation = found->animations[0];
-  if (animation < 0 || size_t(animation) >= asset.studio.animations.size()) return false;
+  if (animation < 0 || size_t(animation) >= asset.studio.animations.size()) return fail("animation is unavailable");
   const auto& metadata = asset.studio.animations[size_t(animation)];
-  if (metadata.frames <= 0 || metadata.fps <= 0) return false;
-  const int frame = int(time * metadata.fps) % metadata.frames;
-  std::string error;
-  const auto pose = studio::sampleAnimation(asset.studio, asset.mdl, size_t(animation), frame, &error);
-  const auto matrices = pose ? studio::skinMatrices(asset.studio, *pose, &error) : std::nullopt;
-  const auto skinned = matrices ? studio::skinVertices(asset.studio, *matrices, &error) : std::nullopt;
+  if (metadata.frames <= 0 || metadata.fps <= 0) return fail("invalid animation metadata");
+  const int elapsed = int(std::max(0.0, time) * metadata.fps);
+  const int frame = found->flags & 1 ? elapsed % metadata.frames : std::min(elapsed, metadata.frames - 1);
+  std::string decodeError;
+  const auto pose = studio::sampleAnimation(asset.studio, asset.mdl, size_t(animation), frame, &decodeError);
+  const auto matrices = pose ? studio::skinMatrices(asset.studio, *pose, &decodeError) : std::nullopt;
+  const auto skinned = matrices ? studio::skinVertices(asset.studio, *matrices, &decodeError) : std::nullopt;
   if (!skinned) {
-    warnOnce("Animation " + std::string(sequence) + " unavailable: " + error);
-    return false;
+    return fail(decodeError.empty() ? "animation data is unavailable" : std::move(decodeError));
   }
   std::vector<render::Vertex3D> vertices;
   vertices.reserve(skinned->size());
   for (const auto& vertex : *skinned)
     vertices.push_back({vertex.pos[0], vertex.pos[1], vertex.pos[2], vertex.uv[0], vertex.uv[1], 0, 0, 0});
-  if (!device_->updateMeshVertices(asset.mesh, vertices)) return false;
+  if (!device_->updateMeshVertices(asset.mesh, vertices)) return fail("GPU vertex update failed");
   asset.animation = animation;
   asset.frame = frame;
   return true;
@@ -368,6 +385,24 @@ void World::setupProps() {
                           map_.staticProps.size());
 }
 
+void World::setupDynamicProps() {
+  for (size_t i = 0; i < entityLump_.size(); ++i) {
+    const auto& entity = entityLump_[i];
+    if (!iequals(entity.get("classname"), "prop_dynamic")) continue;
+    const auto path = entity.get("model");
+    if (path.empty() || !path.ends_with(".mdl")) {
+      ANVIL_WARN("entity", "prop_dynamic %zu has no MDL model", i);
+      continue;
+    }
+    const uint32_t model = loadModelAsset(path, true);
+    if (!model) {
+      ANVIL_WARN("entity", "prop_dynamic %zu model unavailable: %.*s", i, int(path.size()), path.data());
+      continue;
+    }
+    dynamicProps_.push_back({i, model, entityTransform(entity), std::string(path), std::string(entity.get("DefaultAnim")), 0});
+  }
+}
+
 void World::setupEntities(const Mesh& mesh) {
   for (BrushEntity& e : brushEntities(map_, entityLump_)) {
     const ModelRange& range = mesh.models[e.model];
@@ -460,6 +495,18 @@ void World::deliverInput(const InputDelivery& delivery) {
     io_->setEnabled(delivery.target, true);
   } else if (iequals(entity.get("classname"), "trigger_once") && iequals(delivery.input, "Disable")) {
     io_->setEnabled(delivery.target, false);
+  } else if (iequals(entity.get("classname"), "prop_dynamic") && iequals(delivery.input, "Enable")) {
+    io_->setEnabled(delivery.target, true);
+  } else if (iequals(entity.get("classname"), "prop_dynamic") && iequals(delivery.input, "Disable")) {
+    io_->setEnabled(delivery.target, false);
+  } else if (iequals(entity.get("classname"), "prop_dynamic") && iequals(delivery.input, "SetAnimation")) {
+    const auto prop = std::find_if(dynamicProps_.begin(), dynamicProps_.end(), [&](const auto& item) { return item.entity == delivery.target; });
+    if (prop == dynamicProps_.end()) warnOnce("prop_dynamic has no loaded model");
+    else if (delivery.parameter.empty()) warnOnce("prop_dynamic " + std::to_string(delivery.target) + " SetAnimation has no sequence");
+    else {
+      prop->sequence = delivery.parameter;
+      prop->animationStart = ioTime_;
+    }
   } else if (io_->isTimer(delivery.target)) {
     std::string error;
     if (!io_->input(delivery.target, delivery.input, ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
@@ -564,6 +611,15 @@ void World::draw(const Camera& camera, float aspect, bool usePvs) {
   if (device_ && mesh_) device_->draw3d(mesh_, viewProj, translucentDraws_);
   drawEntities(true);
   drawProps(true);
+  for (const DynamicProp& prop : dynamicProps_) {
+    if (!io_ || !io_->enabled(prop.entity)) continue;
+    if (!prop.sequence.empty()) {
+      std::string error;
+      if (!animateModel(prop.model, prop.sequence, ioTime_ - prop.animationStart, &error))
+        warnOnce("prop_dynamic " + std::to_string(prop.entity) + " " + prop.modelPath + " animation " + prop.sequence + ": " + error);
+    }
+    drawModel(prop.model, viewProj * prop.transform.matrix());
+  }
 }
 
 // Visible faces of a world batch -> index ranges; neighbours in the index buffer merge into one draw.
