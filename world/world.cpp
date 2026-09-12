@@ -100,6 +100,8 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   w->setupSky();
   w->io_ = std::make_unique<EntityIo>(w->entityLump_);
   w->startIo();
+  std::string ioError;
+  if (!w->io_->start(w->ioTime_, &ioError)) ANVIL_WARN("entity", "logic_timer: %s", ioError.c_str());
   w->faces_ = mesh.faces;
   w->worldFaceCount_ = mesh.models.empty() ? 0 : mesh.models[0].faceCount; // model 0 sorts first
   w->visibility_ = std::make_unique<Visibility>(w->map_, std::span(w->faces_).first(w->worldFaceCount_));
@@ -423,6 +425,8 @@ void World::setupSky() {
 void World::startIo() {
   if (!io_) return;
   for (size_t i = 0; i < entityLump_.size(); ++i) {
+    if (io_->timerUsesRandomTime(i))
+      warnOnce("PARTIAL: logic_timer random intervals use authored RefireTime");
     if (!iequals(entityLump_[i].get("classname"), "logic_auto")) continue;
     std::string error;
     if (!io_->fire(i, "OnMapSpawn", ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); }, &error))
@@ -438,7 +442,11 @@ void World::deliverInput(const InputDelivery& delivery) {
     return;
   }
   const auto& entity = entityLump_[delivery.target];
-  if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "Enable")) {
+  if (io_->isTimer(delivery.target)) {
+    std::string error;
+    if (!io_->input(delivery.target, delivery.input, ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
+      warnOnce("Unsupported entity input logic_timer." + delivery.input + ": " + error);
+  } else if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "Enable")) {
     io_->setEnabled(delivery.target, true);
   } else if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "Disable")) {
     io_->setEnabled(delivery.target, false);
@@ -455,6 +463,9 @@ void World::deliverInput(const InputDelivery& delivery) {
 void World::tick(float dt) {
   if (!io_ || !std::isfinite(dt) || dt <= 0) return;
   ioTime_ += dt;
+  std::string error;
+  if (!io_->tick(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); }, &error))
+    ANVIL_WARN("entity", "logic_timer: %s", error.c_str());
   io_->dispatch(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); });
 }
 

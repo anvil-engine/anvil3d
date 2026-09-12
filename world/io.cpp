@@ -68,10 +68,93 @@ std::optional<Output> parseOutput(std::string_view value, std::string* error) {
 EntityIo::EntityIo(const std::vector<bsp::Entity>& entities) : entities_(entities) {
   enabled_.reserve(entities.size());
   remaining_.reserve(entities.size());
+  timerIntervals_.reserve(entities.size());
+  nextTimer_.resize(entities.size());
+  timerRandom_.reserve(entities.size());
   for (const bsp::Entity& entity : entities) {
     enabled_.push_back(!equalInsensitive(entity.get("StartDisabled"), "1"));
     remaining_.emplace_back(entity.keys.size(), -2);
+    double interval = 1;
+    const std::string_view authored = entity.get("RefireTime");
+    if (!authored.empty()) {
+      const char* end = authored.data() + authored.size();
+      const auto result = std::from_chars(authored.data(), end, interval);
+      if (result.ec != std::errc{} || result.ptr != end || !std::isfinite(interval) || interval <= 0) interval = 0;
+    }
+    timerIntervals_.push_back(interval);
+    timerRandom_.push_back(equalInsensitive(entity.get("UseRandomTime"), "1"));
   }
+}
+
+bool EntityIo::isTimer(size_t entity) const {
+  return entity < entities_.size() && equalInsensitive(entities_[entity].get("classname"), "logic_timer");
+}
+
+bool EntityIo::timerUsesRandomTime(size_t entity) const { return isTimer(entity) && timerRandom_[entity]; }
+
+bool EntityIo::start(double now, std::string* error) {
+  if (!std::isfinite(now)) {
+    fail(error, "entity I/O start time must be finite");
+    return false;
+  }
+  for (size_t i = 0; i < entities_.size(); ++i) {
+    if (!isTimer(i)) continue;
+    if (timerIntervals_[i] <= 0) {
+      fail(error, "logic_timer RefireTime must be a finite positive number");
+      return false;
+    }
+    nextTimer_[i] = enabled_[i] ? std::optional<double>(now + timerIntervals_[i]) : std::nullopt;
+  }
+  started_ = true;
+  if (error) error->clear();
+  return true;
+}
+
+bool EntityIo::tick(double now, const Callback& callback, std::string* error) {
+  constexpr size_t kMaxCatchUp = 64;
+  if (!started_ || !std::isfinite(now)) {
+    fail(error, !started_ ? "entity I/O timers have not been started" : "entity I/O tick time must be finite");
+    return false;
+  }
+  for (size_t i = 0; i < entities_.size(); ++i) {
+    size_t fired = 0;
+    while (enabled_[i] && nextTimer_[i] && *nextTimer_[i] <= now && fired < kMaxCatchUp) {
+      const double due = *nextTimer_[i];
+      nextTimer_[i] = due + timerIntervals_[i];
+      if (!fire(i, "OnTimer", due, callback, error)) return false;
+      ++fired;
+    }
+    if (nextTimer_[i] && *nextTimer_[i] <= now) {
+      const double missed = std::floor((now - *nextTimer_[i]) / timerIntervals_[i]) + 1;
+      nextTimer_[i] = *nextTimer_[i] + missed * timerIntervals_[i];
+    }
+  }
+  if (error) error->clear();
+  return true;
+}
+
+bool EntityIo::input(size_t entity, std::string_view inputName, double now, const Callback& callback,
+                     std::string* error) {
+  if (!isTimer(entity) || !std::isfinite(now)) {
+    fail(error, !isTimer(entity) ? "entity is not logic_timer" : "logic_timer input time must be finite");
+    return false;
+  }
+  if (equalInsensitive(inputName, "Enable")) {
+    if (!enabled_[entity]) {
+      enabled_[entity] = true;
+      if (started_) nextTimer_[entity] = now + timerIntervals_[entity];
+    }
+  } else if (equalInsensitive(inputName, "Disable")) {
+    enabled_[entity] = false;
+    nextTimer_[entity].reset();
+  } else if (equalInsensitive(inputName, "FireTimer")) {
+    return fire(entity, "OnTimer", now, callback, error);
+  } else {
+    fail(error, "unsupported logic_timer input");
+    return false;
+  }
+  if (error) error->clear();
+  return true;
 }
 
 bool EntityIo::enabled(size_t entity) const { return entity < enabled_.size() && enabled_[entity]; }

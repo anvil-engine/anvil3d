@@ -34,8 +34,13 @@ public:
 
   explicit EntityIo(const std::vector<bsp::Entity>& entities);
 
+  bool start(double now, std::string* error = nullptr);
+  bool tick(double now, const Callback& callback, std::string* error = nullptr);
+  bool input(size_t entity, std::string_view input, double now, const Callback& callback, std::string* error = nullptr);
   bool fire(size_t source, std::string_view output, double now, const Callback& callback, std::string* error = nullptr);
   void dispatch(double now, const Callback& callback);
+  bool isTimer(size_t entity) const;
+  bool timerUsesRandomTime(size_t entity) const;
   bool enabled(size_t entity) const;
   bool setEnabled(size_t entity, bool enabled);
 
@@ -49,6 +54,10 @@ private:
   std::vector<bool> enabled_;
   std::vector<std::vector<int>> remaining_;
   std::vector<Pending> pending_;
+  std::vector<double> timerIntervals_;
+  std::vector<std::optional<double>> nextTimer_;
+  std::vector<bool> timerRandom_;
+  bool started_ = false;
 };
 
 } // namespace anvil::world
