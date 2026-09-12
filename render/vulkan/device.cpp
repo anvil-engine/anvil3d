@@ -35,6 +35,7 @@
 #include "kWorldVert.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <functional>
 #include <string_view>
@@ -74,7 +75,8 @@ struct Texture {
 
 struct Mesh {
   Buffer vertices, indices; // device-local, written once by a staging upload
-  uint32_t indexCount = 0;
+  std::array<Buffer, kFramesInFlight> dynamicVertices; // one host-visible vertex buffer per frame slot
+  uint32_t vertexCount = 0, indexCount = 0;
 };
 
 struct PipelineDesc {
@@ -111,6 +113,7 @@ public:
   TextureHandle createTexture(const TextureDesc& desc, std::span<const uint8_t> pixels) override;
   void destroyTexture(TextureHandle texture) override;
   MeshHandle createMesh(std::span<const Vertex3D> vertices, std::span<const uint32_t> indices) override;
+  bool updateMeshVertices(MeshHandle mesh, std::span<const Vertex3D> vertices) override;
   void destroyMesh(MeshHandle mesh) override;
   bool beginFrame(const float clearColor[4]) override;
   void targetSize(uint32_t& width, uint32_t& height) const override {
@@ -974,6 +977,7 @@ MeshHandle VulkanDevice::createMesh(std::span<const Vertex3D> vertices, std::spa
     }
   const VkDeviceSize vbytes = vertices.size_bytes(), ibytes = indices.size_bytes();
   Mesh m;
+  m.vertexCount = uint32_t(vertices.size());
   m.indexCount = uint32_t(indices.size());
   Buffer staging;
   bool ok = createBuffer(vbytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, HostAccess::None, m.vertices) &&
@@ -1011,10 +1015,24 @@ MeshHandle VulkanDevice::createMesh(std::span<const Vertex3D> vertices, std::spa
   return handle;
 }
 
+bool VulkanDevice::updateMeshVertices(MeshHandle mesh, std::span<const Vertex3D> vertices) {
+  if (!inFrame_ || mesh == 0 || mesh >= meshes_.size() || !meshes_[mesh].vertices.buffer || vertices.size() != meshes_[mesh].vertexCount) {
+    ANVIL_ERROR("vulkan", "Bad dynamic mesh update: handle %u, %zu vertices", mesh, vertices.size());
+    return false;
+  }
+  Buffer& buffer = meshes_[mesh].dynamicVertices[frameSerial_ % kFramesInFlight];
+  const VkDeviceSize bytes = vertices.size_bytes();
+  if (!buffer.buffer && !createBuffer(bytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, HostAccess::Write, buffer)) return false;
+  std::memcpy(buffer.mapped, vertices.data(), size_t(bytes));
+  vmaFlushAllocation(allocator_, buffer.allocation, 0, bytes);
+  return true;
+}
+
 void VulkanDevice::destroyMesh(MeshHandle mesh) {
   if (mesh == 0 || mesh >= meshes_.size() || !meshes_[mesh].vertices.buffer) return;
   garbage_.push_back({frameSerial_, {}, meshes_[mesh].vertices});
   garbage_.push_back({frameSerial_, {}, meshes_[mesh].indices});
+  for (Buffer& buffer : meshes_[mesh].dynamicVertices) garbage_.push_back({frameSerial_, {}, buffer});
   meshes_[mesh] = {};
   freeMeshes_.push_back(mesh);
 }
@@ -1123,7 +1141,8 @@ void VulkanDevice::draw3d(MeshHandle mesh, const Mat4& viewProj, std::span<const
   const VkRect2D scissor{{0, 0}, extent_};
   vkCmdSetScissor(cmd, 0, 1, &scissor);
   const VkDeviceSize zero = 0;
-  vkCmdBindVertexBuffers(cmd, 0, 1, &m.vertices.buffer, &zero);
+  const Buffer& vertices = m.dynamicVertices[frameSerial_ % kFramesInFlight].buffer ? m.dynamicVertices[frameSerial_ % kFramesInFlight] : m.vertices;
+  vkCmdBindVertexBuffers(cmd, 0, 1, &vertices.buffer, &zero);
   vkCmdBindIndexBuffer(cmd, m.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
   vkCmdPushConstants(cmd, pipelineLayout3d_, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(viewProj.m), viewProj.m);
   VkPipeline bound = VK_NULL_HANDLE;

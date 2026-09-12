@@ -35,6 +35,7 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 - Static props: placement and materials PARTIAL; lighting is a per-prop leaf-ambient approximation (no direct light, no VHV), not verified against Source output; fade = hard cull at fademaxdist.
 - Brush entity placement: origin-relative models verified on HL2 data; angle rotation (esp. roll sign) UNVERIFIED; no entity render modes.
 - Shader behavior (LightmappedGeneric, UnlitGeneric, sky, fallbacks for other shaders): anvil interpretation, not verified against Source output.
+- Animated model submission: authored CPU-skinned vertex attributes use one host-visible buffer per frame slot and reuse static index buffers; external/sectioned animation data, blending and retail weapon behavior remain unsupported.
 
 - Independent Jolt player: 32x32x72 rounded box, 64-unit eye, 600 units/s² gravity, 190/320 walk/run, 265 jump impulse, 18-unit stairs. Gameplay tuning, not SDK movement/prediction compatibility. No crouch, water, ladders, moving platforms or entity simulation yet.
 - Collision brushside dispinfo is unused metadata: all 22741 brushsides in trainstation_01 store zero, including non-displacement sides; maps without a displacement lump also store zero. Face.dispinfo remains the validated displacement reference. Static prop render triangles approximate collision and can differ from Source PHY hulls.

@@ -294,6 +294,13 @@ int main() {
     device->endFrame();
     px = device->readPixels();
     if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 16, 32, 200, 50, 0));
+    for (auto& vertex : verts) vertex.x += 10;
+    CHECK(device->beginFrame(black));
+    CHECK(device->updateMeshVertices(mesh3, verts));
+    device->draw3d(mesh3, viewProj, std::span(layered, 1));
+    device->endFrame();
+    px = device->readPixels();
+    if (px.size() == kSize * kSize * 4) CHECK(pixelNear(px, 16, 32, 0, 0, 0));
     device->destroyMesh(mesh3);
     for (TextureHandle t : {baseTex, lightTex, holeTex, glassTex, blueTex}) device->destroyTexture(t);
   }

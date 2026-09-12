@@ -168,7 +168,6 @@ bool World::animateModel(uint32_t model, std::string_view sequence, double time)
   const auto& metadata = asset.studio.animations[size_t(animation)];
   if (metadata.frames <= 0 || metadata.fps <= 0) return false;
   const int frame = int(time * metadata.fps) % metadata.frames;
-  if (asset.animation == animation && asset.frame == frame) return true;
   std::string error;
   const auto pose = studio::sampleAnimation(asset.studio, asset.mdl, size_t(animation), frame, &error);
   const auto matrices = pose ? studio::skinMatrices(asset.studio, *pose, &error) : std::nullopt;
@@ -181,10 +180,7 @@ bool World::animateModel(uint32_t model, std::string_view sequence, double time)
   vertices.reserve(skinned->size());
   for (const auto& vertex : *skinned)
     vertices.push_back({vertex.pos[0], vertex.pos[1], vertex.pos[2], vertex.uv[0], vertex.uv[1], 0, 0, 0});
-  const auto mesh = device_->createMesh(vertices, asset.indices);
-  if (!mesh) return false;
-  device_->destroyMesh(asset.mesh);
-  asset.mesh = mesh;
+  if (!device_->updateMeshVertices(asset.mesh, vertices)) return false;
   asset.animation = animation;
   asset.frame = frame;
   return true;

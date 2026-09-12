@@ -143,6 +143,8 @@ public:
 
   // Static GPU mesh. Returns 0 (logged) on empty input, a non-triangle index count or an out-of-range index.
   virtual MeshHandle createMesh(std::span<const Vertex3D> vertices, std::span<const uint32_t> indices) = 0;
+  // Replaces a mesh's vertex positions/attributes during a frame. Vertex count must be unchanged; indices stay static.
+  virtual bool updateMeshVertices(MeshHandle mesh, std::span<const Vertex3D> vertices) = 0;
   // Freed once no frame in flight can still use it.
   virtual void destroyMesh(MeshHandle mesh) = 0;
 
