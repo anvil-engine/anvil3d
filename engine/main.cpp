@@ -17,6 +17,7 @@
 #include "vgui/scheme.h"
 #include "vgui/font.h"
 #include "vgui/panel.h"
+#include "formats/weapon.h"
 
 #include <algorithm>
 #include <chrono>
@@ -275,6 +276,32 @@ int main(int argc, char** argv) {
     else ANVIL_WARN("vgui","Original glyph U+0041 unavailable: %s",error.c_str());
     ANVIL_WARN("vgui","Font inspection only; proportional scaling, atlases, text layout and panels are not implemented");
   }, "Inspect authored scheme font fallbacks for a screen height (no font substitution)");
+  console.addCommand("weapon_scripts", [&](const Console::Args&) {
+    std::string error;
+    const auto manifestText=fsys.readFile("scripts/weapon_manifest.txt","GAME");
+    if (!manifestText) return ANVIL_ERROR("weapon","Missing scripts/weapon_manifest.txt");
+    const auto files=weapon::parseManifest(*manifestText,&error);
+    if (!files) return ANVIL_ERROR("weapon","Invalid manifest: %s",error.c_str());
+    size_t loaded=0,missingModels=0;
+    for (const auto& path:*files) {
+      const auto normalized=normalizePath(path);
+      const auto text=normalized?fsys.readFile(*normalized,"GAME"):std::nullopt;
+      if (!text) { ANVIL_WARN("weapon","Missing script: %s",path.c_str()); continue; }
+      const auto script=weapon::parseScript(*text,&error);
+      if (!script) { ANVIL_WARN("weapon","Invalid %s: %s",path.c_str(),error.c_str()); continue; }
+      const bool viewOk=script->viewModel.empty()||fsys.exists(script->viewModel,"GAME");
+      const bool worldOk=script->playerModel.empty()||fsys.exists(script->playerModel,"GAME");
+      if (!viewOk) ANVIL_WARN("weapon","%s references missing viewmodel %s",path.c_str(),script->viewModel.c_str());
+      if (!worldOk) ANVIL_WARN("weapon","%s references missing playermodel %s",path.c_str(),script->playerModel.c_str());
+      missingModels+=size_t(!viewOk)+size_t(!worldOk);
+      ANVIL_INFO("weapon","%s: view=%s world=%s ammo=%s/%s sounds=%zu",
+                 path.c_str(),script->viewModel.c_str(),script->playerModel.c_str(),
+                 script->primaryAmmo.c_str(),script->secondaryAmmo.c_str(),script->sounds.size());
+      ++loaded;
+    }
+    ANVIL_INFO("weapon","Loaded %zu/%zu original weapon scripts; %zu referenced models missing",loaded,files->size(),missingModels);
+    ANVIL_WARN("weapon","Script data only; weapon behavior and viewmodel animation are not implemented");
+  }, "Load original scripts/weapon_manifest.txt and referenced WeaponData files");
   Clock clock;
   console.addVar("host_timescale", "1.0", "Simulation speed multiplier",
                  [&](const Console::Var& v) { clock.timescale = std::isfinite(v.asFloat()) ? std::clamp(v.asFloat(), 0.0f, 10.0f) : 1.0f; });

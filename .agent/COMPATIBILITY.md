@@ -17,6 +17,7 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 | Models      | PARTIAL     | NOT STARTED | NOT STARTED |
 | Physics     | PARTIAL (Jolt walking, static BSP collision; PHY props unsupported; triangle approximation diagnostic only) | NOT STARTED | NOT STARTED |
 | VGUI        | PARTIAL (resources/localization, schemes, common panel runtime, font/text batching and limited authored-command dispatch) | NOT STARTED | NOT STARTED |
+| Weapon scripts | PARTIAL (manifest, core WeaponData paths/ammo/SoundData fields) | NOT STARTED | NOT STARTED |
 | Client DLL  | NOT STARTED | NOT STARTED | NOT STARTED |
 | Server DLL  | NOT STARTED | NOT STARTED | NOT STARTED |
 | Audio       | NOT STARTED | NOT STARTED | NOT STARTED |

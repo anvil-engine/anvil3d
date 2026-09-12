@@ -26,7 +26,7 @@ add_library(anvil_filesystem STATIC filesystem/filesystem.cpp filesystem/gameinf
 target_link_libraries(anvil_filesystem PUBLIC anvil_common)
 
 # Format parsers: pure functions over bytes, no I/O, no engine state.
-add_library(anvil_formats STATIC formats/bsp.cpp formats/vtf.cpp formats/vmt.cpp formats/studio.cpp)
+add_library(anvil_formats STATIC formats/bsp.cpp formats/vtf.cpp formats/vmt.cpp formats/studio.cpp formats/weapon.cpp)
 target_link_libraries(anvil_formats PUBLIC anvil_common)
 
 add_library(anvil_physics STATIC physics/physics.cpp)
@@ -89,11 +89,11 @@ if(APPLE)
 endif()
 
 enable_testing()
-foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio textures world console devui render swapchain interfaces physics gameplay vgui)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio weapon textures world console devui render swapchain interfaces physics gameplay vgui)
   add_executable(test_${name} tests/test_${name}.cpp)
   target_link_libraries(test_${name} PRIVATE anvil_engine)
 endforeach()
-foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio textures world console devui render swapchain physics gameplay vgui)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio weapon textures world console devui render swapchain physics gameplay vgui)
   add_test(NAME ${name} COMMAND test_${name})
 endforeach()
 # GPU tests: 77 = skipped (no Vulkan / no display); any validation-layer message fails the test.
@@ -109,9 +109,10 @@ if(ANVIL_HL2_DIR)
   add_test(NAME vmt_hl2 COMMAND test_vmt ${ANVIL_HL2_VPKS} ${ANVIL_HL2_MAPS})
   add_test(NAME studio_hl2 COMMAND test_studio ${ANVIL_HL2_VPKS})
   add_test(NAME source_inspection_hl2 COMMAND anvil -basedir "${ANVIL_HL2_DIR}" -game hl2 -norender -frames 3
-    +map d1_trainstation_01 +vgui_menu +vgui_panel resource/newgamedialog.res 600 296)
+    +map d1_trainstation_01 +vgui_menu +vgui_panel resource/newgamedialog.res 600 296 +weapon_scripts)
   set_tests_properties(source_inspection_hl2 PROPERTIES ENVIRONMENT SDL_VIDEO_DRIVER=dummy
-    PASS_REGULAR_EXPRESSION "Original control Play: Button/Button" FAIL_REGULAR_EXPRESSION "Independent combat;practice objects;Pistol;DIAGNOSTIC")
+    PASS_REGULAR_EXPRESSION "Original control Play: Button/Button;Loaded 18/18 original weapon scripts"
+    FAIL_REGULAR_EXPRESSION "Independent combat;practice objects;DIAGNOSTIC")
   add_test(NAME vgui_hl2 COMMAND test_vgui "${ANVIL_HL2_DIR}")
   add_test(NAME gameplay_hl2 COMMAND test_gameplay "${ANVIL_HL2_DIR}")
   add_test(NAME physics_hl2 COMMAND test_physics "${ANVIL_HL2_DIR}")
