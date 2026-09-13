@@ -32,6 +32,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
   - [x] Implement `trigger_once` and `trigger_multiple` player overlap against transformed BSP convex hulls, including authored `OnStartTouch`, `StartDisabled`, and `Enable`/`Disable` behavior.
   - [x] Implement bounded `logic_branch` and `math_counter` state, authored comparisons/limits, and output dispatch for common inputs.
   - [x] Implement generic linear `func_door` movement with authored Jolt hull synchronization, Open/Close/Toggle/Lock/Unlock/SetSpeed, wait timing, and lifecycle outputs.
+  - [x] Implement generic `func_door_rotating` movement with authored axis flags/distance, synced kinematic collision, and the same common inputs/outputs.
   - [x] Implement generic `trigger_changelevel` player overlap, validated `map`/`mapname`, and one-shot map transition through the engine console.
   - [ ] Implement additional authored entity input handlers and entity behavior; remaining trigger classes and unsupported inputs remain visible warnings.
 - [ ] Original sound resources/scripts and audio playback.

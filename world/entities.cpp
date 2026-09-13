@@ -104,6 +104,29 @@ std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bs
   return LinearDoorMove{direction, distance};
 }
 
+std::optional<RotatingDoorMove> rotatingDoorMove(const bsp::Entity& entity) {
+  int flags = 0;
+  const std::string_view authoredFlags = entity.get("spawnflags");
+  if (!authoredFlags.empty()) {
+    const auto parsed = std::from_chars(authoredFlags.data(), authoredFlags.data() + authoredFlags.size(), flags);
+    if (parsed.ec != std::errc{} || parsed.ptr != authoredFlags.data() + authoredFlags.size()) return std::nullopt;
+  }
+  if ((flags & 64) && (flags & 128)) return std::nullopt;
+  bsp::Vec3 axis = (flags & 64) ? bsp::Vec3{1, 0, 0} : (flags & 128) ? bsp::Vec3{0, 1, 0}
+                                                                         : bsp::Vec3{0, 0, 1};
+  if (flags & 2) axis = {-axis.x, -axis.y, -axis.z};
+
+  float distance = 90;
+  const std::string_view authoredDistance = entity.get("distance");
+  if (!authoredDistance.empty()) {
+    const auto parsed = std::from_chars(authoredDistance.data(), authoredDistance.data() + authoredDistance.size(), distance);
+    if (parsed.ec != std::errc{} || parsed.ptr != authoredDistance.data() + authoredDistance.size() ||
+        !std::isfinite(distance) || distance < 0)
+      return std::nullopt;
+  }
+  return RotatingDoorMove{axis, distance};
+}
+
 bool linearDoorAllowsInput(bool enabled, bool locked, std::string_view input) {
   if (!enabled) return false;
   if (!locked) return true;

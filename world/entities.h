@@ -41,9 +41,16 @@ struct LinearDoorMove {
   float distance = 0;
 };
 
+struct RotatingDoorMove {
+  bsp::Vec3 axis{};
+  float distance = 90;
+};
+
 // Interprets func_door movedir/lip against the authored local brush bounds.
 std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bsp::Vec3& mins,
                                              const bsp::Vec3& maxs);
+// Interprets func_door_rotating axis flags, reverse direction and authored angular distance.
+std::optional<RotatingDoorMove> rotatingDoorMove(const bsp::Entity& entity);
 bool linearDoorAllowsInput(bool enabled, bool locked, std::string_view input);
 
 // Normalizes a Source map name for the `map` command. Rejects paths that can escape the mounted game filesystem

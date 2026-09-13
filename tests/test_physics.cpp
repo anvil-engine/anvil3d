@@ -62,6 +62,16 @@ int main(int argc,char** argv) {
     CHECK(!scene.raycast({192,0,8},{32,0,0}));
     CHECK(scene.setBodyEnabled(moving,true));
     CHECK(scene.raycast({192,0,8},{32,0,0}));
+    const std::array doorHull{
+      physics::Vec3{200,-4,0}, physics::Vec3{264,-4,0}, physics::Vec3{200,4,0}, physics::Vec3{264,4,0},
+      physics::Vec3{200,-4,32}, physics::Vec3{264,-4,32}, physics::Vec3{200,4,32}, physics::Vec3{264,4,32}};
+    const auto turning=scene.addKinematicHull(doorHull);
+    auto turningPose=scene.bodyPose(turning);
+    CHECK(!scene.raycast({168,28,16},{64,0,0}));
+    turningPose.z=std::sqrt(0.5f); turningPose.w=std::sqrt(0.5f);
+    CHECK(scene.setBodyPose(turning,turningPose));
+    const auto rotatedHit=scene.raycast({168,28,16},{64,0,0});
+    CHECK(rotatedHit&&rotatedHit->body==turning);
     movingPose.position.x=NAN;
     CHECK(!scene.setBodyPose(moving,movingPose));
     CHECK(scene.addBox({0,0,0},{-1,2,3})==physics::invalidBody);

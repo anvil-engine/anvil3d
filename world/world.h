@@ -119,14 +119,15 @@ private:
   struct Door {
     size_t entity = 0, instance = 0;
     bsp::Vec3 closed{}, open{}, current{};
+    bsp::Vec3 closedAngles{}, openAngles{}, currentAngles{};
     float speed = 100, wait = 4;
-    bool toggle = false, locked = false, passable = false;
+    bool rotating = false, toggle = false, locked = false, passable = false;
     DoorState state = DoorState::Closed;
     double closeAt = -1;
     bool physicsDirty = false;
     std::vector<physics::Body> bodies;
     std::vector<physics::Pose> basePoses;
-    bsp::Vec3 attachedOrigin{};
+    Transform attachedTransform;
   };
   std::vector<Door> doors_;
   struct DynamicProp {

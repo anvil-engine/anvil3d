@@ -37,6 +37,42 @@ Transform entityTransform(const bsp::Entity& entity) {
   return out;
 }
 
+physics::Pose movedDoorPose(const Transform& from, const Transform& to, const physics::Pose& base) {
+  const render::Mat4 a = from.matrix(), b = to.matrix();
+  float r[3][3]{};
+  for (int row = 0; row < 3; ++row)
+    for (int col = 0; col < 3; ++col)
+      for (int k = 0; k < 3; ++k) r[row][col] += b.m[k * 4 + row] * a.m[k * 4 + col];
+
+  physics::Pose out = base;
+  const bsp::Vec3 relative{base.position.x - from.origin.x, base.position.y - from.origin.y,
+                           base.position.z - from.origin.z};
+  out.position = {to.origin.x + r[0][0] * relative.x + r[0][1] * relative.y + r[0][2] * relative.z,
+                  to.origin.y + r[1][0] * relative.x + r[1][1] * relative.y + r[1][2] * relative.z,
+                  to.origin.z + r[2][0] * relative.x + r[2][1] * relative.y + r[2][2] * relative.z};
+  const float trace = r[0][0] + r[1][1] + r[2][2];
+  if (trace > 0) {
+    const float s = std::sqrt(trace + 1) * 2;
+    out.w = 0.25f * s;
+    out.x = (r[2][1] - r[1][2]) / s;
+    out.y = (r[0][2] - r[2][0]) / s;
+    out.z = (r[1][0] - r[0][1]) / s;
+  } else {
+    const int i = r[1][1] > r[0][0] ? (r[2][2] > r[1][1] ? 2 : 1) : (r[2][2] > r[0][0] ? 2 : 0);
+    const int j = (i + 1) % 3, k = (i + 2) % 3;
+    float q[4]{};
+    const float s = std::sqrt(std::max(0.0f, 1 + r[i][i] - r[j][j] - r[k][k])) * 2;
+    if (s > 0) {
+      q[i] = 0.25f * s;
+      q[3] = (r[k][j] - r[j][k]) / s;
+      q[j] = (r[j][i] + r[i][j]) / s;
+      q[k] = (r[k][i] + r[i][k]) / s;
+    }
+    out.x = q[0]; out.y = q[1]; out.z = q[2]; out.w = q[3];
+  }
+  return out;
+}
+
 } // namespace
 
 render::Mat4 viewProjection(const Camera& camera, float aspect) {
@@ -427,26 +463,42 @@ void World::setupEntities(const Mesh& mesh) {
 void World::setupDoors() {
   for (size_t i = 0; i < entities_.size(); ++i) {
     EntityInstance& instance = entities_[i];
-    if (iequals(instance.entity.classname, "func_door_rotating") ||
-        iequals(instance.entity.classname, "func_tracktrain")) {
+    if (iequals(instance.entity.classname, "func_tracktrain")) {
       warnOnce("Unsupported moving brush entity " + instance.entity.classname);
       continue;
     }
-    if (!iequals(instance.entity.classname, "func_door")) continue;
+    const bool rotating = iequals(instance.entity.classname, "func_door_rotating");
+    if (!rotating && !iequals(instance.entity.classname, "func_door")) continue;
     const bsp::Entity& authored = entityLump_[instance.entity.entity];
     const auto& model = map_.models[instance.entity.model];
-    const auto move = linearDoorMove(authored, model.mins, model.maxs);
-    if (!move) {
-      ANVIL_WARN("entity", "func_door %zu has invalid movedir/lip", instance.entity.entity);
-      continue;
-    }
     Door door;
     door.entity = instance.entity.entity;
     door.instance = i;
+    door.rotating = rotating;
     door.closed = instance.entity.transform.origin;
-    door.open = {door.closed.x + move->direction.x * move->distance,
-                 door.closed.y + move->direction.y * move->distance,
-                 door.closed.z + move->direction.z * move->distance};
+    door.open = door.closed;
+    door.closedAngles = instance.entity.transform.angles;
+    door.openAngles = door.closedAngles;
+    if (rotating) {
+      const auto move = rotatingDoorMove(authored);
+      if (!move) {
+        ANVIL_WARN("entity", "func_door_rotating %zu has invalid axis flags/distance", door.entity);
+        continue;
+      }
+      // Transform stores pitch(Y), yaw(Z), roll(X), while the entity flags name physical axes.
+      door.openAngles = {door.closedAngles.x + move->axis.y * move->distance,
+                         door.closedAngles.y + move->axis.z * move->distance,
+                         door.closedAngles.z + move->axis.x * move->distance};
+    } else {
+      const auto move = linearDoorMove(authored, model.mins, model.maxs);
+      if (!move) {
+        ANVIL_WARN("entity", "func_door %zu has invalid movedir/lip", door.entity);
+        continue;
+      }
+      door.open = {door.closed.x + move->direction.x * move->distance,
+                   door.closed.y + move->direction.y * move->distance,
+                   door.closed.z + move->direction.z * move->distance};
+    }
     auto parseFloat = [&](std::string_view key, float fallback) {
       const std::string_view text = authored.get(key);
       if (text.empty()) return fallback;
@@ -473,7 +525,9 @@ void World::setupDoors() {
     const bool startsOpen = (spawnflags & 1) != 0 || authored.get("spawnpos") == "1";
     door.state = startsOpen ? DoorState::Open : DoorState::Closed;
     door.current = door.state == DoorState::Open ? door.open : door.closed;
+    door.currentAngles = door.state == DoorState::Open ? door.openAngles : door.closedAngles;
     instance.entity.transform.origin = door.current;
+    instance.entity.transform.angles = door.currentAngles;
     doors_.push_back(std::move(door));
     updateDoorPose(doors_.size() - 1, nullptr);
   }
@@ -483,11 +537,12 @@ void World::attachPhysics(physics::Scene& scene) {
   for (Door& door : doors_) {
     if (door.passable) continue;
     const EntityInstance& instance = entities_[door.instance];
-    door.attachedOrigin = door.current;
+    door.attachedTransform = instance.entity.transform;
     for (const auto& hull : modelHulls(map_, instance.entity.model, instance.entity.transform, true)) {
       const physics::Body body = scene.addKinematicHull(hull);
       if (body == physics::invalidBody) {
-        ANVIL_WARN("entity", "func_door %zu has invalid collision hull", door.entity);
+        ANVIL_WARN("entity", "%s %zu has invalid collision hull", door.rotating ? "func_door_rotating" : "func_door",
+                   door.entity);
         continue;
       }
       door.bodies.push_back(body);
@@ -502,6 +557,7 @@ void World::updateDoorPose(size_t index, physics::Scene* scene) {
   Door& door = doors_[index];
   EntityInstance& instance = entities_[door.instance];
   instance.entity.transform.origin = door.current;
+  instance.entity.transform.angles = door.currentAngles;
   instance.matrix = instance.entity.transform.matrix();
   const auto& model = map_.models[instance.entity.model];
   transformBox(instance.entity.transform, model.mins, model.maxs, instance.mins, instance.maxs);
@@ -510,11 +566,8 @@ void World::updateDoorPose(size_t index, physics::Scene* scene) {
   std::sort(instance.clusters.begin(), instance.clusters.end());
   instance.clusters.erase(std::unique(instance.clusters.begin(), instance.clusters.end()), instance.clusters.end());
   if (!scene) return;
-  const bsp::Vec3 delta{door.current.x - door.attachedOrigin.x, door.current.y - door.attachedOrigin.y,
-                        door.current.z - door.attachedOrigin.z};
   for (size_t i = 0; i < door.bodies.size(); ++i) {
-    physics::Pose pose = door.basePoses[i];
-    pose.position = {pose.position.x + delta.x, pose.position.y + delta.y, pose.position.z + delta.z};
+    const physics::Pose pose = movedDoorPose(door.attachedTransform, instance.entity.transform, door.basePoses[i]);
     scene->setBodyPose(door.bodies[i], pose);
     scene->setBodyEnabled(door.bodies[i], io_->enabled(door.entity));
   }
@@ -534,7 +587,8 @@ void World::beginDoor(size_t entity, bool open) {
   std::string error;
   const char* output = open ? "OnOpen" : "OnClose";
   if (!io_->fire(found->entity, output, ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
-    ANVIL_WARN("entity", "func_door %zu %s: %s", found->entity, output, error.c_str());
+    ANVIL_WARN("entity", "%s %zu %s: %s", found->rotating ? "func_door_rotating" : "func_door",
+               found->entity, output, error.c_str());
 }
 
 void World::setupSky() {
@@ -630,7 +684,7 @@ void World::deliverInput(const InputDelivery& delivery) {
   const bool trigger = iequals(entity.get("classname"), "trigger_once") ||
                        iequals(entity.get("classname"), "trigger_multiple") ||
                        iequals(entity.get("classname"), "trigger_changelevel");
-  if (iequals(entity.get("classname"), "func_door")) {
+  if (iequals(entity.get("classname"), "func_door") || iequals(entity.get("classname"), "func_door_rotating")) {
     auto door = std::find_if(doors_.begin(), doors_.end(), [&](const Door& item) { return item.entity == delivery.target; });
     if (iequals(delivery.input, "Enable") || iequals(delivery.input, "Disable")) {
       io_->setEnabled(delivery.target, iequals(delivery.input, "Enable"));
@@ -639,7 +693,7 @@ void World::deliverInput(const InputDelivery& delivery) {
     else if (iequals(delivery.input, "Open")) beginDoor(delivery.target, true);
     else if (iequals(delivery.input, "Close")) beginDoor(delivery.target, false);
     else if (iequals(delivery.input, "Toggle")) {
-      if (door == doors_.end()) warnOnce("func_door has no drawable BSP model");
+      if (door == doors_.end()) warnOnce(std::string(entity.get("classname")) + " has no drawable BSP model");
       else if (linearDoorAllowsInput(io_->enabled(delivery.target), door->locked, "Toggle"))
         beginDoor(delivery.target, door->state == DoorState::Closed || door->state == DoorState::Closing);
     } else if (iequals(delivery.input, "Lock") || iequals(delivery.input, "Unlock")) {
@@ -647,12 +701,12 @@ void World::deliverInput(const InputDelivery& delivery) {
     } else if (iequals(delivery.input, "SetSpeed")) {
       float speed = 0;
       const auto parsed = std::from_chars(delivery.parameter.data(), delivery.parameter.data() + delivery.parameter.size(), speed);
-      if (door == doors_.end()) warnOnce("func_door has no drawable BSP model");
+      if (door == doors_.end()) warnOnce(std::string(entity.get("classname")) + " has no drawable BSP model");
       else if (parsed.ec != std::errc{} || parsed.ptr != delivery.parameter.data() + delivery.parameter.size() ||
                !std::isfinite(speed) || speed <= 0)
-        warnOnce("func_door SetSpeed requires a finite positive number");
+        warnOnce(std::string(entity.get("classname")) + " SetSpeed requires a finite positive number");
       else door->speed = speed;
-    } else warnOnce("Unsupported entity input func_door." + delivery.input);
+    } else warnOnce("Unsupported entity input " + std::string(entity.get("classname")) + "." + delivery.input);
   } else if (trigger && iequals(delivery.input, "Enable")) {
     io_->setEnabled(delivery.target, true);
   } else if (trigger && iequals(delivery.input, "Disable")) {
@@ -709,25 +763,28 @@ void World::tick(float dt, physics::Scene* scene) {
     }
     if (door.state == DoorState::Open && door.closeAt >= 0 && ioTime_ >= door.closeAt) beginDoor(door.entity, false);
     if (door.state != DoorState::Opening && door.state != DoorState::Closing) continue;
-    const bsp::Vec3 target = door.state == DoorState::Opening ? door.open : door.closed;
-    const bsp::Vec3 delta{target.x - door.current.x, target.y - door.current.y, target.z - door.current.z};
+    const bsp::Vec3 target = door.state == DoorState::Opening
+                               ? (door.rotating ? door.openAngles : door.open)
+                               : (door.rotating ? door.closedAngles : door.closed);
+    bsp::Vec3& current = door.rotating ? door.currentAngles : door.current;
+    const bsp::Vec3 delta{target.x - current.x, target.y - current.y, target.z - current.z};
     const float remaining = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
     const float step = door.speed * dt;
     if (remaining > step && remaining > 0) {
       const float scale = step / remaining;
-      door.current = {door.current.x + delta.x * scale, door.current.y + delta.y * scale,
-                      door.current.z + delta.z * scale};
+      current = {current.x + delta.x * scale, current.y + delta.y * scale, current.z + delta.z * scale};
       updateDoorPose(i, scene);
       continue;
     }
-    door.current = target;
+    current = target;
     const bool opened = door.state == DoorState::Opening;
     door.state = opened ? DoorState::Open : DoorState::Closed;
     updateDoorPose(i, scene);
     std::string error;
     const char* output = opened ? "OnFullyOpen" : "OnFullyClosed";
     if (!io_->fire(door.entity, output, ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
-      ANVIL_WARN("entity", "func_door %zu %s: %s", door.entity, output, error.c_str());
+      ANVIL_WARN("entity", "%s %zu %s: %s", door.rotating ? "func_door_rotating" : "func_door",
+                 door.entity, output, error.c_str());
     if (opened && !door.toggle && door.wait >= 0) door.closeAt = ioTime_ + door.wait;
   }
 }

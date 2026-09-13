@@ -398,6 +398,17 @@ int main(int argc, char** argv) {
     CHECK(up && near(up->direction.z, 1) && near(up->distance, 14));
     const auto badDoor = bsp::parseEntities(R"({ "classname" "func_door" "lip" "oops" })");
     CHECK(!world::linearDoorMove(badDoor[0], {0, 0, 0}, {64, 32, 16}));
+    const auto rotatingDoor = bsp::parseEntities(
+      R"({ "classname" "func_door_rotating" "distance" "120" "spawnflags" "66" })");
+    const auto rotation = world::rotatingDoorMove(rotatingDoor[0]);
+    CHECK(rotation && near(rotation->axis.x, -1) && near(rotation->axis.y, 0) && near(rotation->distance, 120));
+    const auto defaultRotation = world::rotatingDoorMove(
+      bsp::parseEntities(R"({ "classname" "func_door_rotating" })")[0]);
+    CHECK(defaultRotation && near(defaultRotation->axis.z, 1) && near(defaultRotation->distance, 90));
+    CHECK(!world::rotatingDoorMove(
+      bsp::parseEntities(R"({ "classname" "func_door_rotating" "spawnflags" "192" })")[0]));
+    CHECK(!world::rotatingDoorMove(
+      bsp::parseEntities(R"({ "classname" "func_door_rotating" "distance" "nan" })")[0]));
     CHECK(world::linearDoorAllowsInput(true, false, "Open"));
     CHECK(!world::linearDoorAllowsInput(true, true, "Open"));
     CHECK(!world::linearDoorAllowsInput(true, true, "Toggle"));
