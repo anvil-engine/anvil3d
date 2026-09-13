@@ -28,8 +28,9 @@ std::string wavePath(std::string_view path) {
 void readLayer(const KeyValues& layer, bool looping, SoundscapeDefinition& out) {
   if (!looping) out.usesRandom = true;
   const KeyValues* wave = layer.find("wave");
+  const KeyValues* random = layer.find("rndwave");
   if (!wave) {
-    if (const KeyValues* random = layer.find("rndwave")) {
+    if (random) {
       out.usesRandom = true;
       for (const KeyValues& item : random->children)
         if (iequals(item.key, "wave") && !item.value.empty()) { wave = &item; break; }
@@ -38,6 +39,11 @@ void readLayer(const KeyValues& layer, bool looping, SoundscapeDefinition& out) 
   if (!wave || wave->value.empty()) return;
   SoundscapeWave sound;
   sound.path = wavePath(wave->value);
+  if (random) {
+    out.usesRandom = true;
+    for (const KeyValues& item : random->children)
+      if (iequals(item.key, "wave") && !item.value.empty()) sound.randomVariants.push_back(wavePath(item.value));
+  }
   sound.looping = looping;
   float value = 0;
   if (scalar(layer.get("volume"), value)) sound.volume = std::clamp(value, 0.0f, 1.0f);

@@ -13,6 +13,7 @@ namespace anvil::world {
 
 struct SoundscapeWave {
   std::string path;
+  std::vector<std::string> randomVariants;
   float volume = 1;
   float pitch = 1;
   bool looping = true;

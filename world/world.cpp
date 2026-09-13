@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <functional>
 #include <optional>
+#include <random>
 #include <set>
 #include <unordered_map>
 
@@ -1117,7 +1118,7 @@ void World::setupSoundscapes() {
       continue;
     }
     if (definition->usesDsp) warnOnce("Unsupported env_soundscape DSP semantics: " + std::string(name));
-    if (definition->usesRandom) warnOnce("PARTIAL env_soundscape random semantics: " + std::string(name));
+    std::mt19937 random(std::random_device{}());
     Soundscape soundscape;
     soundscape.entity = i;
     soundscape.origin = entityOrigin(entity).value_or(bsp::Vec3{});
@@ -1130,21 +1131,26 @@ void World::setupSoundscapes() {
       else warnOnce("env_soundscape " + std::to_string(i) + " has invalid radius");
     }
     for (const SoundscapeWave& wave : definition->waves) {
-      const auto normalized = normalizePath(lower(wave.path));
+      std::string wavePath = wave.path;
+      if (!wave.randomVariants.empty()) {
+        std::uniform_int_distribution<size_t> pick(0, wave.randomVariants.size() - 1);
+        wavePath = wave.randomVariants[pick(random)];
+      }
+      const auto normalized = normalizePath(lower(wavePath));
       const auto bytes = normalized ? fs_.readFile(*normalized, "GAME") : std::nullopt;
       if (!bytes) {
-        warnOnce("Missing env_soundscape WAV: " + wave.path);
+        warnOnce("Missing env_soundscape WAV: " + wavePath);
         continue;
       }
       auto decoded = wav::decode(*bytes, &error);
       if (!decoded) {
-        warnOnce("env_soundscape " + wave.path + ": " + error);
+        warnOnce("env_soundscape " + wavePath + ": " + error);
         continue;
       }
       AmbientSound sound;
       sound.entity = i;
       sound.origin = soundscape.origin;
-      sound.path = wave.path;
+      sound.path = std::move(wavePath);
       sound.samples = std::move(decoded->samples);
       sound.sampleRate = decoded->sampleRate;
       sound.channels = decoded->channels;
