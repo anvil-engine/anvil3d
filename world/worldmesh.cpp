@@ -17,7 +17,7 @@ constexpr size_t kWhite = SIZE_MAX; // Block::face of the shared white block
 
 struct Block {
   size_t face; // index into map.faces, or kWhite
-  uint32_t w, h;
+  uint32_t w, h, styles = 0;
   uint32_t x = 0, y = 0;
 };
 
@@ -69,13 +69,15 @@ Mesh buildMesh(const bsp::Map& map) {
     const bsp::Face& f = map.faces[faces[k]];
     if (f.lightofs < 0 || f.styles[0] == 255) continue; // unlit surface
     const int64_t w = int64_t(f.lightmapSize[0]) + 1, h = int64_t(f.lightmapSize[1]) + 1;
+    uint32_t styles = 1;
+    while (styles < 4 && f.styles[styles] != 255) ++styles;
     if (w < 1 || h < 1 || w > kMaxLuxels || h > kMaxLuxels ||
-        uint64_t(f.lightofs) + uint64_t(w * h * 4) > map.lighting.size()) {
+        uint64_t(f.lightofs) + uint64_t(w * h * 4 * styles) > map.lighting.size()) {
       ++out.badLightmaps;
       continue;
     }
     blockOf[k] = blocks.size();
-    blocks.push_back({faces[k], uint32_t(w), uint32_t(h)});
+    blocks.push_back({faces[k], uint32_t(w), uint32_t(h), styles});
   }
 
   // ponytail: one shelf-packed atlas; split into pages if a map ever exceeds maxTextureSize.
@@ -114,7 +116,18 @@ Mesh buildMesh(const bsp::Map& map) {
       for (uint32_t lx = 0; lx < b.w; ++lx) {
         uint8_t* dst = &atlas.pixels[(size_t(b.y + ly) * atlasW + b.x + lx) * 4];
         if (b.face == kWhite) std::memset(dst, 255, 4);
-        else luxelToRgba(lighting + map.faces[b.face].lightofs + (size_t(ly) * b.w + lx) * 4, dst); // style 0, flat
+        else {
+          float rgb[3]{};
+          const size_t luxel = size_t(ly) * b.w + lx;
+          for (uint32_t style = 0; style < b.styles; ++style) {
+            const uint8_t* src = lighting + map.faces[b.face].lightofs + (luxel + size_t(style) * b.w * b.h) * 4;
+            const float scale = std::ldexp(1.0f / 255.0f, int8_t(src[3]));
+            for (int channel = 0; channel < 3; ++channel) rgb[channel] += float(src[channel]) * scale;
+          }
+          for (int channel = 0; channel < 3; ++channel)
+            dst[channel] = uint8_t(std::min(std::pow(rgb[channel], 1.0f / 2.2f) * 0.5f, 1.0f) * 255.0f + 0.5f);
+          dst[3] = 255;
+        }
       }
 
   std::vector<bsp::Vec3> poly;

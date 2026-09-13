@@ -40,17 +40,21 @@ bsp::Map syntheticMap() {
   quad.numedges = 4;
   quad.dispinfo = -1;
   quad.lightmapSize[0] = quad.lightmapSize[1] = 4;
+  quad.styles[1] = 1;
+  quad.styles[2] = 255;
   bsp::Face hidden = quad, grid = quad, badLight = quad;
   hidden.texinfo = 1;
   grid.texinfo = 2;
   grid.dispinfo = 0;
   grid.lightofs = -1;         // unlit: white block
-  badLight.lightofs = 4 * 10; // 25 samples from sample 10 run past the 25-sample lump
+  badLight.lightofs = 4 * 40; // 25 samples from sample 40 run past the 50-sample lump
   m.faces = {quad, hidden, grid, badLight};
   m.models = {{{}, {}, {}, 0, 0, 4}};
 
-  // Lighting: 25 samples of (255,255,255, exp 0); sample 0 exponent -1, sample 24 exponent +1.
+  // Style 0: 25 samples of (255,255,255, exp 0); sample 0 exponent -1, sample 24 exponent +1.
   for (int i = 0; i < 25; ++i) m.lighting += std::string("\xFF\xFF\xFF", 3) + char(i == 0 ? -1 : i == 24 ? 1 : 0);
+  // Style 1: half-intensity samples, combined into the same atlas block.
+  for (int i = 0; i < 25; ++i) m.lighting += std::string("\xFF\xFF\xFF", 3) + char(-1);
 
   bsp::DispInfo d{};
   d.startPosition = {64, 0, 0}; // corner 1: grid starts there
@@ -305,8 +309,8 @@ int main(int argc, char** argv) {
     const render::Vertex3D& v0 = mesh.vertices[0];
     const render::Vertex3D& v2 = mesh.vertices[2];
     CHECK(vertexAt(v2, 64, 64, 0) && near(v2.u, 1) && near(v2.v, 1));
-    CHECK(atlasTexel(mesh, v0.lu, v0.lv)[0] == 93 && atlasTexel(mesh, v2.lu, v2.lv)[0] == 175);
-    CHECK(atlasTexel(mesh, mesh.vertices[1].lu, mesh.vertices[1].lv)[0] == 128);
+    CHECK(atlasTexel(mesh, v0.lu, v0.lv)[0] == 128 && atlasTexel(mesh, v2.lu, v2.lv)[0] == 193);
+    CHECK(atlasTexel(mesh, mesh.vertices[1].lu, mesh.vertices[1].lv)[0] == 153);
     // Out-of-range lightmap and unlit displacement: white block.
     CHECK(atlasTexel(mesh, mesh.vertices[4].lu, mesh.vertices[4].lv)[0] == 255);
     CHECK(atlasTexel(mesh, mesh.vertices[8].lu, mesh.vertices[8].lv)[0] == 255);
