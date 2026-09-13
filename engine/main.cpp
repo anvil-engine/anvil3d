@@ -126,7 +126,7 @@ int main(int argc, char** argv) {
     if (level) {
       camera = level->spawnPoint();
       simulation = std::make_unique<physics::Scene>(physicsRuntime);
-      world::buildCollision(*simulation, level->map(), diagnosticPlay ? &fsys : nullptr);
+      world::buildCollision(*simulation, level->map(), &fsys);
       level->attachPhysics(*simulation);
       auto feet = camera.origin; feet.z -= 64;
       simulation->spawnPlayer(feet);

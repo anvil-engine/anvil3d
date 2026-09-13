@@ -110,6 +110,12 @@ int main(int argc,char** argv) {
     CHECK(points.size()==8);
     physics::Scene scene(runtime);
     CHECK(scene.addHull(points)!=physics::invalidBody);
+    const std::vector<std::vector<physics::Vec3>> compound{points, {
+      {32,-8,0},{48,-8,0},{32,8,0},{48,8,0},{32,-8,16},{48,-8,16},{32,8,16},{48,8,16}}};
+    const auto dynamicCompound=scene.addHulls(compound,5);
+    CHECK(dynamicCompound!=physics::invalidBody);
+    settle(scene);
+    CHECK(scene.bodyPosition(dynamicCompound).z<0);
     auto hit=scene.raycast({0,0,100},{0,0,-200});
     CHECK(hit&&std::abs(hit->point.z)<0.01f);
     m.planes[0].normal.x=NAN;
@@ -126,9 +132,9 @@ int main(int argc,char** argv) {
     auto world=world::World::load(fs,nullptr,"d1_trainstation_01");
     CHECK(world); if(!world) return TEST_RESULT();
     physics::Scene scene(runtime);
-    auto stats=world::buildCollision(scene,world->map());
+    auto stats=world::buildCollision(scene,world->map(),&fs);
     world->attachPhysics(scene);
-    CHECK(stats.brushes>100); CHECK(stats.rejected==0);
+    CHECK(stats.brushes>100); CHECK(stats.propHulls>100); CHECK(stats.rejected<10);
     auto feet=world->spawnPoint().origin; feet.z-=64;
     scene.spawnPlayer(feet); settle(scene,240);
     auto p=scene.playerFeet();

@@ -1,10 +1,13 @@
 #include "world/collision.h"
 #include "world/entities.h"
 #include "world/props.h"
+#include "formats/phy.h"
+#include "filesystem/filesystem.h"
 #include "common/log.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <cstdio>
 
 namespace anvil::world {
 namespace {
@@ -150,25 +153,49 @@ CollisionStats buildCollision(physics::Scene& scene, const bsp::Map& m, FileSyst
   stats.displacementTriangles=triangles.size();
   if (fs && !m.staticProps.empty()) {
     auto geometry=loadPropGeometry(*fs,m.staticPropModels);
+    std::vector<std::optional<phy::Model>> collision(m.staticPropModels.size());
+    for (size_t i=0;i<m.staticPropModels.size();++i) {
+      std::string base=m.staticPropModels[i];
+      if (base.size()>4) base.resize(base.size()-4);
+      const auto bytes=fs->readFile(base+".phy","GAME");
+      std::string error;
+      collision[i]=bytes?phy::load(*bytes,&error):std::nullopt;
+      if (bytes&&!collision[i]) ANVIL_WARN("physics","Static prop PHY %s: %s",base.c_str(),error.c_str());
+    }
     for (const auto& prop:m.staticProps) {
       if (!prop.solid) continue;
       const auto& model=geometry.models[prop.propType];
-      if (!model.loaded) { ++stats.rejected; continue; }
+      const auto& authored=collision[prop.propType];
+      if (!model.loaded||!authored||authored->checksum!=uint32_t(model.info.checksum)) { ++stats.rejected; continue; }
       const Transform transform{prop.origin,prop.angles};
-      // ponytail: render triangles for static collision, replace with PHY convex solids for exact behavior.
-      for (const auto& mesh:model.meshes) for (uint32_t i=0;i+2<mesh.indexCount;i+=3) {
-        auto vertex=[&](uint32_t j) { const auto& v=geometry.vertices[geometry.indices[mesh.firstIndex+i+j]]; return transform.apply({v.x,v.y,v.z}); };
-        triangles.push_back({vertex(0),vertex(1),vertex(2)});
-        ++stats.propTriangles;
-      }
+      auto hulls=authored->hulls;
+      for(auto& hull:hulls) for(auto& point:hull) point=transform.apply(point);
+      if(scene.addHulls(hulls)==physics::invalidBody) ++stats.rejected;
+      else stats.propHulls+=hulls.size();
     }
-    ANVIL_WARN("physics","DIAGNOSTIC: static prop collision uses render triangles, not PHY hulls");
   } else if (!m.staticProps.empty()) {
     ANVIL_WARN("physics","Unsupported Source PHY collision: static prop collision omitted");
   }
+  if (fs) for (const auto& entity:bsp::parseEntities(m.entities)) {
+    if (entity.get("classname")!="prop_physics") continue;
+    std::string path(entity.get("model"));
+    if (path.size()<=4||!path.ends_with(".mdl")) { ++stats.rejected; continue; }
+    path.resize(path.size()-4);
+    const auto bytes=fs->readFile(path+".phy","GAME");
+    std::string error;
+    const auto authored=bytes?phy::load(*bytes,&error):std::nullopt;
+    if (!authored||authored->mass<=0) { ++stats.rejected; continue; }
+    Transform transform;
+    std::sscanf(std::string(entity.get("origin")).c_str(),"%f %f %f",&transform.origin.x,&transform.origin.y,&transform.origin.z);
+    std::sscanf(std::string(entity.get("angles")).c_str(),"%f %f %f",&transform.angles.x,&transform.angles.y,&transform.angles.z);
+    auto hulls=authored->hulls;
+    for(auto& hull:hulls) for(auto& point:hull) point=transform.apply(point);
+    if(scene.addHulls(hulls,authored->mass)==physics::invalidBody) ++stats.rejected;
+    else stats.propHulls+=hulls.size();
+  }
   if (!triangles.empty()&&scene.addMesh(triangles)==physics::invalidBody) ++stats.rejected;
   scene.optimize();
-  ANVIL_INFO("physics","Jolt: %zu brushes, %zu terrain triangles, %zu prop triangles, %zu rejected",stats.brushes,stats.displacementTriangles,stats.propTriangles,stats.rejected);
+  ANVIL_INFO("physics","Jolt: %zu brushes, %zu terrain triangles, %zu prop hulls, %zu rejected",stats.brushes,stats.displacementTriangles,stats.propHulls,stats.rejected);
   ANVIL_WARN("physics","PARTIAL: unsupported moving brush classes are static; water simulation and Source movement prediction are not implemented");
   return stats;
 }

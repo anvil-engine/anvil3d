@@ -40,7 +40,8 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
   - [ ] Implement additional authored entity input handlers and entity behavior; remaining trigger classes and unsupported inputs remain visible warnings.
 - [x] Decode PCM WAV resources and play `ambient_generic` through SDL3 audio, including authored volume/pitch/radius/loop flags and common inputs.
 - [~] Resolve `ambient_generic` names through `scripts/game_sounds_manifest.txt` (`wave` and first `rndwave` entry); broader `game_sounds*.txt` layout and playback semantics remain.
-- [ ] PHY collision, entity physics/parenting, Source movement semantics, triggers and progression driven by map data.
+- [x] Parse bounded Source PHY compact-convex solids and attach compound Jolt collision to static props and `prop_physics`.
+- [ ] PHY legacy/alternate layouts, entity physics/parenting, Source movement semantics, triggers and progression driven by map data.
 - [ ] Resolve game module/ABI path for original game-specific behavior; the retail mac i386 modules cannot load into this arm64 runtime.
 - [ ] Modern renderer features remain a separate track; named algorithms require actual implementations and configuration.
 

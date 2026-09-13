@@ -16,7 +16,7 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 | Textures    | PARTIAL (VTF->GPU; no frames/cubemaps/HDR) | NOT STARTED | NOT STARTED |
 | World render | PARTIAL (brush world, LightmappedGeneric-style, lightmaps, displacements, PVS/frustum, 2D sky, moving `func_door`/`func_door_rotating`/`func_breakable` entities with synced collision, WVT blend, static props with ambient-only light; no 3D sky/water/decals/overlays) | NOT STARTED | NOT STARTED |
 | Models      | PARTIAL (LOD0 mesh, skeleton/sequence metadata, inline and available external/sectioned raw/RLE poses, CPU skinning, `prop_dynamic` animation inputs and diagnostic render submission; no pose blending, include models, flexes or bodygroups) | NOT STARTED | NOT STARTED |
-| Physics     | PARTIAL (Jolt walking, static BSP collision and precise trigger overlap against transformed BSP convex hulls; PHY props unsupported; triangle approximation diagnostic only) | NOT STARTED | NOT STARTED |
+| Physics     | PARTIAL (Jolt walking, static BSP collision and precise trigger overlap against transformed BSP convex hulls; bounded PHY compact-convex compound collision for props; four alternate PHY layouts unsupported) | NOT STARTED | NOT STARTED |
 | VGUI        | PARTIAL (resources/localization, schemes, common panel runtime, font/text batching and limited authored-command dispatch) | NOT STARTED | NOT STARTED |
 | Weapon scripts | PARTIAL (manifest, core WeaponData paths/ammo/SoundData fields) | NOT STARTED | NOT STARTED |
 | Client DLL  | NOT STARTED | NOT STARTED | NOT STARTED |
@@ -55,4 +55,4 @@ Statuses: NOT STARTED, STUB, PARTIAL, WORKING, COMPATIBLE, UNKNOWN. Claim nothin
 - Scheme Borders aliases and side layers resolve with authored order, color and offset. Common controls produce a backend-neutral plan of scheme-derived fills, borders and text requests. Fills/borders and exact-family text textures submit through `render::2d`; each text run honors authored alignment and clips to its control. Unknown controls remain visibly unsupported.
 - KeyValues escaping is opt-in for localization (quotes/backslashes/newline/return/tab); other consumers preserve literal backslashes. Empty blocks are distinguished from empty strings for base inheritance.
 
-- Normal collision loading omits unsupported static-prop PHY shapes with a warning. Render-triangle substitutes are enabled only on the explicit diagnostic path.
+- Source PHY collision: bounded compact-convex solids are parsed with checked offsets and attached as compound Jolt collision for static props and `prop_physics`; mass is read when authored. Legacy IVP, sphere, capsule, and non-compact/unknown surface layouts remain unsupported and are warned/omitted. Render-triangle substitutes are enabled only on the explicit diagnostic path.

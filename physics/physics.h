@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <vector>
 
 namespace anvil::physics {
 using Vec3 = bsp::Vec3;
@@ -33,6 +34,7 @@ public:
   Scene& operator=(const Scene&) = delete;
   Body addBox(Vec3 center, Vec3 halfExtent, float mass = 0, bool playerClip = false);
   Body addHull(std::span<const Vec3> points, bool playerClip = false);
+  Body addHulls(std::span<const std::vector<Vec3>> hulls, float mass = 0);
   Body addKinematicHull(std::span<const Vec3> points);
   Body addMesh(std::span<const Triangle> triangles);
   bool setBodyPose(Body body, const Pose& pose);

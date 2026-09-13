@@ -12,6 +12,7 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/CollideShape.h>
@@ -127,6 +128,30 @@ Body Scene::addHull(std::span<const Vec3> points, bool playerClip) {
   auto result = s.Create();
   if (result.HasError()) { ANVIL_WARN("physics", "Invalid collision hull: %s", result.GetError().c_str()); return invalidBody; }
   return impl_->add(result.Get(), toJ(center), 0, playerClip);
+}
+Body Scene::addHulls(std::span<const std::vector<Vec3>> hulls, float mass) {
+  if (hulls.empty() || !std::isfinite(mass) || mass < 0) return invalidBody;
+  Vec3 center{};
+  size_t count = 0;
+  for (const auto& hull : hulls) for (Vec3 point : hull) {
+    if (!finite(point)) return invalidBody;
+    center.x += point.x; center.y += point.y; center.z += point.z; ++count;
+  }
+  if (!count) return invalidBody;
+  center.x /= float(count); center.y /= float(count); center.z /= float(count);
+  JPH::StaticCompoundShapeSettings compound;
+  for (const auto& hull : hulls) {
+    if (hull.size() < 4) return invalidBody;
+    JPH::ConvexHullShapeSettings settings;
+    settings.mMaxConvexRadius = 0;
+    for (Vec3 point : hull) settings.mPoints.push_back(toJ({point.x-center.x,point.y-center.y,point.z-center.z}));
+    auto result = settings.Create();
+    if (result.HasError()) return invalidBody;
+    compound.AddShape(JPH::Vec3::sZero(),JPH::Quat::sIdentity(),result.Get());
+  }
+  auto result=compound.Create();
+  if (result.HasError()) return invalidBody;
+  return impl_->add(result.Get(),toJ(center),mass,false);
 }
 Body Scene::addKinematicHull(std::span<const Vec3> points) {
   if (points.size() < 4) return invalidBody;
