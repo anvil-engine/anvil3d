@@ -203,6 +203,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   w->setupSky();
   w->setupTriggers();
   w->io_ = std::make_unique<EntityIo>(w->entityLump_);
+  w->setupScriptedSequences();
   w->setupAmbientSounds();
   w->startIo();
   std::string ioError;
@@ -499,6 +500,62 @@ void World::setupDynamicProps() {
     }
     dynamicProps_.push_back({i, model, entityTransform(entity), std::string(path), std::string(entity.get("DefaultAnim")), 0});
   }
+}
+
+void World::setupScriptedSequences() {
+  for (size_t i = 0; i < entityLump_.size(); ++i) {
+    if (!iequals(entityLump_[i].get("classname"), "scripted_sequence")) continue;
+    auto config = scriptedSequenceConfig(entityLump_[i]);
+    if (!config) {
+      ANVIL_WARN("entity", "scripted_sequence %zu has invalid or missing target/animation", i);
+      continue;
+    }
+    const double beginAt = ioTime_ + config->delay;
+    scriptedSequences_.push_back({i, std::move(*config), beginAt});
+  }
+}
+
+void World::beginScriptedSequence(size_t entity) {
+  auto sequence = std::find_if(scriptedSequences_.begin(), scriptedSequences_.end(),
+                               [&](const ScriptedSequence& item) { return item.entity == entity; });
+  if (sequence == scriptedSequences_.end() || sequence->active) return;
+  size_t target = entityLump_.size();
+  for (size_t i = 0; i < entityLump_.size(); ++i)
+    if (iequals(entityLump_[i].get("targetname"), sequence->config.target)) { target = i; break; }
+  if (target == entityLump_.size()) {
+    warnOnce("scripted_sequence " + std::to_string(entity) + " target not found: " + sequence->config.target);
+    return;
+  }
+  if (!iequals(entityLump_[target].get("classname"), "prop_dynamic")) {
+    warnOnce("Unsupported scripted_sequence NPC/AI target " + std::string(entityLump_[target].get("classname")) +
+             ": " + sequence->config.target);
+    return;
+  }
+  const auto prop = std::find_if(dynamicProps_.begin(), dynamicProps_.end(),
+                                 [&](const DynamicProp& item) { return item.entity == target; });
+  if (prop == dynamicProps_.end()) {
+    warnOnce("scripted_sequence target prop_dynamic has no loaded model: " + sequence->config.target);
+    return;
+  }
+  const auto& asset = modelAssets_[prop->model - 1];
+  const auto wanted = lower(sequence->config.animation);
+  const auto authored = std::find_if(asset.studio.sequences.begin(), asset.studio.sequences.end(), [&](const auto& item) {
+    return lower(item.name) == wanted || lower(item.activityName) == wanted;
+  });
+  if (authored == asset.studio.sequences.end() || authored->animations.empty()) {
+    warnOnce("scripted_sequence animation unavailable: " + sequence->config.animation);
+    return;
+  }
+  const int animation = authored->animations[0];
+  if (animation < 0 || size_t(animation) >= asset.studio.animations.size()) return;
+  const auto& metadata = asset.studio.animations[size_t(animation)];
+  if (metadata.fps <= 0 || metadata.frames <= 0) return;
+  deliverInput({entity, target, "SetAnimation", authored->name});
+  sequence->active = true;
+  sequence->endAt = ioTime_ + double(metadata.frames) / metadata.fps;
+  std::string error;
+  if (!io_->fire(entity, "OnBeginSequence", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
+    ANVIL_WARN("entity", "scripted_sequence %zu OnBeginSequence: %s", entity, error.c_str());
 }
 
 void World::setupEntities(const Mesh& mesh) {
@@ -995,7 +1052,16 @@ void World::deliverInput(const InputDelivery& delivery) {
   const bool trigger = iequals(entity.get("classname"), "trigger_once") ||
                        iequals(entity.get("classname"), "trigger_multiple") ||
                        iequals(entity.get("classname"), "trigger_changelevel");
-  if (iequals(entity.get("classname"), "ambient_generic")) {
+  if (iequals(entity.get("classname"), "scripted_sequence")) {
+    auto sequence = std::find_if(scriptedSequences_.begin(), scriptedSequences_.end(),
+                                 [&](const ScriptedSequence& item) { return item.entity == delivery.target; });
+    if (iequals(delivery.input, "BeginSequence")) beginScriptedSequence(delivery.target);
+    else if (iequals(delivery.input, "CancelSequence") && sequence != scriptedSequences_.end() &&
+             sequence->config.interruptible) {
+      sequence->active = false;
+      sequence->endAt = -1;
+    } else warnOnce("Unsupported entity input scripted_sequence." + delivery.input);
+  } else if (iequals(entity.get("classname"), "ambient_generic")) {
     const auto found = std::find_if(ambientSounds_.begin(), ambientSounds_.end(),
                                     [&](const AmbientSound& sound) { return sound.entity == delivery.target; });
     if (found == ambientSounds_.end()) warnOnce("ambient_generic has no playable WAV");
@@ -1167,6 +1233,20 @@ void World::tick(float dt, physics::Scene* scene) {
   if (!io_->tick(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); }, &error))
     ANVIL_WARN("entity", "logic_timer: %s", error.c_str());
   io_->dispatch(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); });
+  for (ScriptedSequence& sequence : scriptedSequences_) {
+    if (!sequence.active && sequence.beginAt >= 0 && ioTime_ >= sequence.beginAt) {
+      sequence.beginAt = -1;
+      beginScriptedSequence(sequence.entity);
+    }
+    if (!sequence.active || sequence.endAt < 0 || ioTime_ < sequence.endAt) continue;
+    sequence.active = false;
+    sequence.endAt = -1;
+    std::string sequenceError;
+    if (!io_->fire(sequence.entity, "OnEndSequence", ioTime_,
+                   [this](const InputDelivery& next) { deliverInput(next); }, &sequenceError))
+      ANVIL_WARN("entity", "scripted_sequence %zu OnEndSequence: %s", sequence.entity, sequenceError.c_str());
+    if (sequence.config.repeatable) sequence.beginAt = ioTime_ + sequence.config.repeatDelay;
+  }
   for (Breakable& breakable : breakables_) {
     if (!breakable.physicsDirty) continue;
     if (scene)

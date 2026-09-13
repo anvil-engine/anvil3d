@@ -94,6 +94,7 @@ private:
   void setupBreakables();
   void setupTrackTrains();
   void setupAmbientSounds();
+  void setupScriptedSequences();
   void playAmbient(size_t ambient);
   void stopAmbient(size_t ambient);
   void startIo();
@@ -102,6 +103,7 @@ private:
   void updateDoorPose(size_t door, physics::Scene* scene);
   void updateTrackTrainPose(size_t train, physics::Scene* scene);
   void breakEntity(size_t entity);
+  void beginScriptedSequence(size_t entity);
   void appendVisible(uint32_t batch, std::vector<render::Draw3D>& out); // world batch, visible faces merged
   render::TextureHandle texture(std::string_view name);
 
@@ -179,6 +181,13 @@ private:
     double animationStart = 0;
   };
   std::vector<DynamicProp> dynamicProps_;
+  struct ScriptedSequence {
+    size_t entity = 0;
+    ScriptedSequenceConfig config;
+    double beginAt = 0, endAt = -1;
+    bool active = false;
+  };
+  std::vector<ScriptedSequence> scriptedSequences_;
   // Parallel to Mesh::batches: the batch's whole index range with its material; faces [firstFace, +faceCount).
   struct Material {
     render::Draw3D draw;

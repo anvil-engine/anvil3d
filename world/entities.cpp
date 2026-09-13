@@ -176,6 +176,35 @@ bool applyBreakableDamage(float& health, bool damageable, float damage) {
   return health <= 0;
 }
 
+std::optional<ScriptedSequenceConfig> scriptedSequenceConfig(const bsp::Entity& entity) {
+  ScriptedSequenceConfig out;
+  out.target = entity.get("m_iszEntity");
+  if (out.target.empty()) out.target = entity.get("target");
+  out.animation = entity.get("m_iszPlay");
+  if (out.animation.empty()) out.animation = entity.get("sequence");
+  if (out.animation.empty()) out.animation = entity.get("activity");
+  if (out.target.empty() || out.animation.empty() || out.target.size() > 1024 || out.animation.size() > 1024)
+    return std::nullopt;
+
+  auto number = [&](std::string_view key, float& value) {
+    const std::string_view text = entity.get(key);
+    if (text.empty()) return true;
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+    return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() &&
+           std::isfinite(value) && value >= 0;
+  };
+  if (!number("delay", out.delay) || !number("m_flRepeat", out.repeatDelay)) return std::nullopt;
+  int flags = 0;
+  const std::string_view authoredFlags = entity.get("spawnflags");
+  if (!authoredFlags.empty()) {
+    const auto parsed = std::from_chars(authoredFlags.data(), authoredFlags.data() + authoredFlags.size(), flags);
+    if (parsed.ec != std::errc{} || parsed.ptr != authoredFlags.data() + authoredFlags.size()) return std::nullopt;
+  }
+  out.repeatable = (flags & 4) != 0;
+  out.interruptible = (flags & 32) == 0;
+  return out;
+}
+
 std::optional<size_t> findPathTrack(const std::vector<bsp::Entity>& entities, std::string_view name) {
   if (name.empty() || name.size() > 1024) return std::nullopt;
   for (size_t i = 0; i < entities.size(); ++i)

@@ -52,6 +52,15 @@ struct BreakableConfig {
   bool damageable = true;
 };
 
+struct ScriptedSequenceConfig {
+  std::string target;
+  std::string animation;
+  float delay = 0;
+  float repeatDelay = 0;
+  bool repeatable = false;
+  bool interruptible = true;
+};
+
 // Interprets func_door movedir/lip against the authored local brush bounds.
 std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bsp::Vec3& mins,
                                              const bsp::Vec3& maxs);
@@ -65,6 +74,9 @@ bool linearDoorAllowsInput(bool enabled, bool locked, std::string_view input);
 std::optional<BreakableConfig> breakableConfig(const bsp::Entity& entity);
 // Applies valid damage and reports whether health reached zero.
 bool applyBreakableDamage(float& health, bool damageable, float damage);
+
+// Reads the small authored subset that can drive an existing prop_dynamic without pretending to provide NPC AI.
+std::optional<ScriptedSequenceConfig> scriptedSequenceConfig(const bsp::Entity& entity);
 
 // Resolves a Source entity targetname to a path_track. Name matching is ASCII case-insensitive.
 std::optional<size_t> findPathTrack(const std::vector<bsp::Entity>& entities, std::string_view name);

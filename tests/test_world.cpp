@@ -439,6 +439,17 @@ int main(int argc, char** argv) {
     CHECK(!world::applyBreakableDamage(breakableHealth, true, -1) && near(breakableHealth, 25));
     CHECK(!world::breakableConfig(bsp::parseEntities(R"({ "classname" "func_breakable" "health" "nan" })")[0]));
     CHECK(!world::breakableConfig(bsp::parseEntities(R"({ "classname" "func_breakable" "material" "99" })")[0]));
+    const auto scripted = world::scriptedSequenceConfig(bsp::parseEntities(
+      R"({ "classname" "scripted_sequence" "m_iszEntity" "citizen" "m_iszPlay" "wave" "delay" "0.5" "m_flRepeat" "2" "spawnflags" "4" })")[0]);
+    CHECK(scripted && scripted->target == "citizen" && scripted->animation == "wave" &&
+          near(scripted->delay, 0.5f) && near(scripted->repeatDelay, 2) && scripted->repeatable && scripted->interruptible);
+    const auto activity = world::scriptedSequenceConfig(bsp::parseEntities(
+      R"({ "classname" "scripted_sequence" "target" "prop" "activity" "ACT_IDLE" "spawnflags" "32" })")[0]);
+    CHECK(activity && activity->animation == "ACT_IDLE" && !activity->interruptible);
+    CHECK(!world::scriptedSequenceConfig(bsp::parseEntities(
+      R"({ "classname" "scripted_sequence" "m_iszEntity" "npc" })")[0]));
+    CHECK(!world::scriptedSequenceConfig(bsp::parseEntities(
+      R"({ "classname" "scripted_sequence" "target" "prop" "sequence" "idle" "delay" "nan" })")[0]));
     CHECK(world::normalizeMapName("d1_trainstation_02") == "d1_trainstation_02");
     CHECK(world::normalizeMapName(" maps\\D1_trainstation_02.bsp ") == "d1_trainstation_02");
     CHECK(!world::normalizeMapName("../outside"));
