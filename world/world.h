@@ -97,10 +97,12 @@ private:
   void setupBreakables();
   void setupTrackTrains();
   void setupAmbientSounds();
+  void setupSoundscapes();
   void setupScriptedSequences();
   void setupFades();
   void playAmbient(size_t ambient);
   void stopAmbient(size_t ambient);
+  void activateSoundscape(std::optional<size_t> soundscape);
   void startIo();
   void deliverInput(const InputDelivery& delivery);
   void beginDoor(size_t entity, bool open);
@@ -144,6 +146,15 @@ private:
     bool looping = false, everywhere = false;
   };
   std::vector<AmbientSound> ambientSounds_;
+  struct Soundscape {
+    size_t entity = 0;
+    bsp::Vec3 origin{};
+    float radius = 128;
+    std::vector<size_t> sounds;
+  };
+  std::vector<Soundscape> soundscapes_;
+  std::optional<size_t> activeSoundscape_;
+  bool forcedSoundscape_ = false;
   enum class DoorState { Closed, Opening, Open, Closing };
   struct Door {
     size_t entity = 0, instance = 0;

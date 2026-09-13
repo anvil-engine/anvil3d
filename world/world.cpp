@@ -12,6 +12,7 @@
 #include "platform/audio.h"
 #include "world/sky.h"
 #include "world/collision.h"
+#include "world/soundscape.h"
 #include "world/worldmesh.h"
 
 #include <algorithm>
@@ -206,6 +207,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   w->setupScriptedSequences();
   w->setupFades();
   w->setupAmbientSounds();
+  w->setupSoundscapes();
   w->startIo();
   std::string ioError;
   if (!w->io_->start(w->ioTime_, &ioError)) ANVIL_WARN("entity", "logic_timer: %s", ioError.c_str());
@@ -1035,6 +1037,65 @@ void World::setupAmbientSounds() {
   }
 }
 
+void World::setupSoundscapes() {
+  for (size_t i = 0; i < entityLump_.size(); ++i) {
+    const bsp::Entity& entity = entityLump_[i];
+    if (!iequals(entity.get("classname"), "env_soundscape")) continue;
+    if (!audio_) {
+      warnOnce("env_soundscape audio unavailable: no playback device");
+      return;
+    }
+    const std::string_view name = entity.get("soundscape");
+    std::string error;
+    const auto definition = loadSoundscape(fs_, name, &error);
+    if (!definition) {
+      warnOnce("env_soundscape " + std::to_string(i) + ": " + error);
+      continue;
+    }
+    if (definition->usesDsp) warnOnce("Unsupported env_soundscape DSP semantics: " + std::string(name));
+    if (definition->usesRandom) warnOnce("PARTIAL env_soundscape random semantics: " + std::string(name));
+    Soundscape soundscape;
+    soundscape.entity = i;
+    soundscape.origin = entityOrigin(entity).value_or(bsp::Vec3{});
+    const std::string_view radius = entity.get("radius");
+    if (!radius.empty()) {
+      float value = 0;
+      const auto parsed = std::from_chars(radius.data(), radius.data() + radius.size(), value);
+      if (parsed.ec == std::errc{} && parsed.ptr == radius.data() + radius.size() && std::isfinite(value) && value > 0)
+        soundscape.radius = value;
+      else warnOnce("env_soundscape " + std::to_string(i) + " has invalid radius");
+    }
+    for (const SoundscapeWave& wave : definition->waves) {
+      const auto normalized = normalizePath(lower(wave.path));
+      const auto bytes = normalized ? fs_.readFile(*normalized, "GAME") : std::nullopt;
+      if (!bytes) {
+        warnOnce("Missing env_soundscape WAV: " + wave.path);
+        continue;
+      }
+      auto decoded = wav::decode(*bytes, &error);
+      if (!decoded) {
+        warnOnce("env_soundscape " + wave.path + ": " + error);
+        continue;
+      }
+      AmbientSound sound;
+      sound.entity = i;
+      sound.origin = soundscape.origin;
+      sound.path = wave.path;
+      sound.samples = std::move(decoded->samples);
+      sound.sampleRate = decoded->sampleRate;
+      sound.channels = decoded->channels;
+      sound.volume = wave.volume;
+      sound.pitch = wave.pitch;
+      sound.radius = soundscape.radius;
+      sound.looping = wave.looping;
+      sound.everywhere = wave.everywhere;
+      ambientSounds_.push_back(std::move(sound));
+      soundscape.sounds.push_back(ambientSounds_.size() - 1);
+    }
+    if (!soundscape.sounds.empty()) soundscapes_.push_back(std::move(soundscape));
+  }
+}
+
 void World::setupFades() {
   for (size_t i = 0; i < entityLump_.size(); ++i) {
     if (!iequals(entityLump_[i].get("classname"), "env_fade")) continue;
@@ -1079,8 +1140,35 @@ void World::stopAmbient(size_t index) {
   ambientSounds_[index].voice = 0;
 }
 
+void World::activateSoundscape(std::optional<size_t> soundscape) {
+  if (activeSoundscape_ == soundscape) return;
+  if (activeSoundscape_)
+    for (size_t sound : soundscapes_[*activeSoundscape_].sounds) stopAmbient(sound);
+  activeSoundscape_ = soundscape;
+  if (activeSoundscape_)
+    for (size_t sound : soundscapes_[*activeSoundscape_].sounds) playAmbient(sound);
+}
+
 void World::updateAudio(const Camera& listener) {
-  if (audio_) audio_->update(listener.origin.x, listener.origin.y, listener.origin.z);
+  if (!audio_) return;
+  if (!forcedSoundscape_) {
+    std::optional<size_t> nearest;
+    float nearestDistance = 0;
+    for (size_t i = 0; i < soundscapes_.size(); ++i) {
+      const Soundscape& soundscape = soundscapes_[i];
+      if (!io_->enabled(soundscape.entity)) continue;
+      const float dx = soundscape.origin.x - listener.origin.x;
+      const float dy = soundscape.origin.y - listener.origin.y;
+      const float dz = soundscape.origin.z - listener.origin.z;
+      const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+      if (distance <= soundscape.radius && (!nearest || distance < nearestDistance)) {
+        nearest = i;
+        nearestDistance = distance;
+      }
+    }
+    activateSoundscape(nearest);
+  }
+  audio_->update(listener.origin.x, listener.origin.y, listener.origin.z);
 }
 
 void World::startIo() {
@@ -1159,6 +1247,22 @@ void World::deliverInput(const InputDelivery& delivery) {
         }
       } else warnOnce("Unsupported entity input ambient_generic." + delivery.input);
     }
+  } else if (iequals(entity.get("classname"), "env_soundscape")) {
+    const auto found = std::find_if(soundscapes_.begin(), soundscapes_.end(),
+                                    [&](const Soundscape& item) { return item.entity == delivery.target; });
+    if (found == soundscapes_.end()) warnOnce("env_soundscape has no playable WAV");
+    else if (iequals(delivery.input, "Enable")) {
+      io_->setEnabled(delivery.target, true);
+      forcedSoundscape_ = false;
+    } else if (iequals(delivery.input, "Disable")) {
+      io_->setEnabled(delivery.target, false);
+      if (activeSoundscape_ && &soundscapes_[*activeSoundscape_] == &*found) activateSoundscape(std::nullopt);
+      forcedSoundscape_ = false;
+    } else if (iequals(delivery.input, "Activate")) {
+      io_->setEnabled(delivery.target, true);
+      forcedSoundscape_ = true;
+      activateSoundscape(size_t(found - soundscapes_.begin()));
+    } else warnOnce("Unsupported entity input env_soundscape." + delivery.input);
   } else if (iequals(entity.get("classname"), "func_tracktrain")) {
     auto train = std::find_if(trackTrains_.begin(), trackTrains_.end(),
                               [&](const TrackTrain& item) { return item.entity == delivery.target; });
