@@ -320,9 +320,10 @@ bool EntityIo::input(size_t entity, std::string_view inputName, std::string_view
       return false;
     }
     double value = values_[entity];
+    const bool noFire = equalInsensitive(inputName, "SetValueNoFire");
     if (equalInsensitive(inputName, "Add")) value += operand;
     else if (equalInsensitive(inputName, "Subtract")) value -= operand;
-    else if (equalInsensitive(inputName, "SetValue")) value = operand;
+    else if (equalInsensitive(inputName, "SetValue") || noFire) value = operand;
     else if (equalInsensitive(inputName, "Multiply")) value *= operand;
     else if (equalInsensitive(inputName, "Divide")) {
       if (operand == 0) {
@@ -347,6 +348,7 @@ bool EntityIo::input(size_t entity, std::string_view inputName, std::string_view
       values_[entity] = *maximums_[entity];
       hit = "OnHitMax";
     }
+    if (noFire) return true;
     if (!hit.empty()) {
       const std::string value = numberText(values_[entity]);
       return fire(entity, hit, now, callback, error, value);
