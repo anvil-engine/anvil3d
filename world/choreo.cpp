@@ -1,17 +1,32 @@
 #include "world/choreo.h"
 
+#include "common/crc32.h"
 #include "common/strutil.h"
 
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <cstring>
 
 namespace anvil::world {
 namespace {
 
 constexpr size_t kMaxBytes = 4 * 1024 * 1024;
+constexpr size_t kMaxSceneImageBytes = 64 * 1024 * 1024;
+constexpr uint32_t kSceneImageMagic = 0x46495356; // VSIF
+constexpr uint32_t kSceneImageVersion = 2;
 constexpr size_t kMaxTokens = 200000;
 constexpr int kMaxDepth = 32;
+
+uint32_t readU32(std::string_view bytes, size_t offset) {
+  uint32_t value = 0;
+  std::memcpy(&value, bytes.data() + offset, sizeof(value));
+  return value;
+}
+
+bool rangeFits(size_t offset, size_t length, size_t size) {
+  return offset <= size && length <= size - offset;
+}
 
 struct Lexer {
   std::string_view text;
@@ -147,6 +162,65 @@ std::optional<ChoreoScene> parseChoreo(std::string_view text, std::string* error
   std::stable_sort(parser.scene.events.begin(), parser.scene.events.end(),
                    [](const ChoreoEvent& a, const ChoreoEvent& b) { return a.start < b.start; });
   return parser.scene;
+}
+
+std::optional<SceneImage> SceneImage::parse(std::string bytes, std::string* error) {
+  if (error) error->clear();
+  auto fail = [&](std::string message) -> std::optional<SceneImage> {
+    if (error) *error = std::move(message);
+    return std::nullopt;
+  };
+  if (bytes.size() < 20) return fail("truncated scenes.image header");
+  if (bytes.size() > kMaxSceneImageBytes) return fail("scenes.image exceeds 64 MiB limit");
+  if (readU32(bytes, 0) != kSceneImageMagic) return fail("invalid scenes.image magic");
+  if (readU32(bytes, 4) != kSceneImageVersion) return fail("unsupported scenes.image version");
+
+  const uint32_t sceneCount = readU32(bytes, 8);
+  const uint32_t stringCount = readU32(bytes, 12);
+  const uint32_t directoryOffset = readU32(bytes, 16);
+  if (sceneCount > 100000 || stringCount > 1000000) return fail("scenes.image count limit exceeded");
+  if (!rangeFits(20, size_t(stringCount) * 4, bytes.size()) ||
+      !rangeFits(directoryOffset, size_t(sceneCount) * 16, bytes.size()))
+    return fail("scenes.image table is out of bounds");
+  if (directoryOffset < 20 + size_t(stringCount) * 4) return fail("invalid scenes.image directory offset");
+  for (uint32_t i = 0; i < stringCount; ++i) {
+    const uint32_t offset = readU32(bytes, 20 + size_t(i) * 4);
+    if (offset >= directoryOffset || bytes.find('\0', offset) >= directoryOffset)
+      return fail("invalid scenes.image string offset");
+  }
+
+  SceneImage image;
+  image.bytes_ = std::move(bytes);
+  image.entries_.reserve(sceneCount);
+  uint32_t previousCrc = 0;
+  for (uint32_t i = 0; i < sceneCount; ++i) {
+    const size_t offset = directoryOffset + size_t(i) * 16;
+    Entry entry{readU32(image.bytes_, offset), readU32(image.bytes_, offset + 4),
+                readU32(image.bytes_, offset + 8)};
+    const uint32_t summaryOffset = readU32(image.bytes_, offset + 12);
+    if ((i && entry.crc <= previousCrc) || !rangeFits(entry.offset, entry.length, image.bytes_.size()) ||
+        summaryOffset >= image.bytes_.size())
+      return fail("invalid scenes.image directory entry");
+    previousCrc = entry.crc;
+    image.entries_.push_back(entry);
+  }
+  return image;
+}
+
+std::optional<std::string_view> SceneImage::find(std::string_view sceneName) const {
+  std::string normalized;
+  normalized.reserve(sceneName.size() + 7);
+  for (char c : sceneName) {
+    if (c == '\0') return std::nullopt;
+    normalized.push_back(c == '/' ? '\\' : static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  }
+  if (!normalized.starts_with("scenes\\")) normalized.insert(0, "scenes\\");
+  if (normalized.find("..") != std::string::npos) return std::nullopt;
+  const uint32_t crc = crc32(normalized);
+  const auto found = std::lower_bound(entries_.begin(), entries_.end(), crc,
+                                      [](const Entry& entry, uint32_t value) { return entry.crc < value; });
+  if (found == entries_.end() || found->crc != crc) return std::nullopt;
+  return std::string_view(bytes_).substr(found->offset, found->length);
 }
 
 } // namespace anvil::world

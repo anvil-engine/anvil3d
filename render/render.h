@@ -108,6 +108,7 @@ struct Draw3D {
   Blend blend = Blend::Opaque;
   float alphaRef = 0.5f;
   TextureHandle texture2 = 0; // 0 = no blend layer
+  bool texture2Full = false;  // use texture2 as the authored base (unlit two-texture materials)
   float tint[3] = {1, 1, 1};  // per-draw RGB multiplier (e.g. a prop's ambient light)
 };
 

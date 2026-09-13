@@ -384,6 +384,11 @@ std::optional<render::Draw3D> World::material(const std::string& path, bool prop
   if (shader == "unlitgeneric") {
     d.lightmap = 0;
     d.colorScale = 1.0f;
+  } else if (shader == "unlittwotexture") {
+    d.lightmap = 0;
+    d.colorScale = 1.0f;
+    const std::string_view base2 = m->get("$texture2", m->get("$basetexture2"));
+    if (!base2.empty()) { d.texture2 = texture(base2); d.texture2Full = true; }
   } else if (prop) {
     if (shader == "vertexlitgeneric") warnOnce("PARTIAL: VertexLitGeneric props lit by one leaf ambient sample per prop");
     else warnOnce("PARTIAL: prop shader " + m->shader + " drawn as VertexLitGeneric");

@@ -17,7 +17,8 @@ layout(location = 0) out vec4 outColor;
 
 void main() {
   vec4 base = texture(tex, uv);
-  if (pc.params.z > 0.0) base = mix(base, texture(tex2, uv), clamp(blend, 0.0, 1.0));
+  if (pc.params.w > 0.0) base = texture(tex2, uv);
+  else if (pc.params.z > 0.0) base = mix(base, texture(tex2, uv), clamp(blend, 0.0, 1.0));
   if (base.a < pc.params.y) discard;
   outColor = vec4(base.rgb * texture(lightmap, lightmapUV).rgb * pc.params.x * pc.tint.rgb, base.a);
 }

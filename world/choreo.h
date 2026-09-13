@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -26,5 +27,22 @@ struct ChoreoScene {
 
 // Parses the bounded text VCD form used by Source choreography files.
 std::optional<ChoreoScene> parseChoreo(std::string_view text, std::string* error = nullptr);
+
+class SceneImage {
+public:
+  static std::optional<SceneImage> parse(std::string bytes, std::string* error = nullptr);
+  std::optional<std::string_view> find(std::string_view sceneName) const;
+  size_t size() const { return entries_.size(); }
+
+private:
+  struct Entry {
+    uint32_t crc = 0;
+    uint32_t offset = 0;
+    uint32_t length = 0;
+  };
+
+  std::string bytes_;
+  std::vector<Entry> entries_;
+};
 
 } // namespace anvil::world
