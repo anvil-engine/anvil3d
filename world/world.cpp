@@ -463,13 +463,14 @@ void World::setupSky() {
 
 void World::setupTriggers() {
   for (const BrushEntity& entity : brushEntities(map_, entityLump_)) {
-    if (!iequals(entity.classname, "trigger_once")) continue;
+    const bool once = iequals(entity.classname, "trigger_once");
+    if (!once && !iequals(entity.classname, "trigger_multiple")) continue;
     auto hulls = modelHulls(map_, entity.model, entity.transform);
     if (hulls.empty()) {
-      ANVIL_WARN("entity", "trigger_once %zu has no valid BSP hull", entity.entity);
+      ANVIL_WARN("entity", "%s %zu has no valid BSP hull", entity.classname.c_str(), entity.entity);
       continue;
     }
-    triggers_.push_back({entity.entity, std::move(hulls)});
+    triggers_.push_back({entity.entity, std::move(hulls), once});
   }
 }
 
@@ -491,9 +492,11 @@ void World::deliverInput(const InputDelivery& delivery) {
     return;
   }
   const auto& entity = entityLump_[delivery.target];
-  if (iequals(entity.get("classname"), "trigger_once") && iequals(delivery.input, "Enable")) {
+  const bool trigger = iequals(entity.get("classname"), "trigger_once") ||
+                       iequals(entity.get("classname"), "trigger_multiple");
+  if (trigger && iequals(delivery.input, "Enable")) {
     io_->setEnabled(delivery.target, true);
-  } else if (iequals(entity.get("classname"), "trigger_once") && iequals(delivery.input, "Disable")) {
+  } else if (trigger && iequals(delivery.input, "Disable")) {
     io_->setEnabled(delivery.target, false);
   } else if (iequals(entity.get("classname"), "prop_dynamic") && iequals(delivery.input, "Enable")) {
     io_->setEnabled(delivery.target, true);
@@ -536,17 +539,26 @@ void World::tick(float dt) {
 
 void World::checkTriggers(const physics::Scene& scene) {
   if (!io_) return;
-  for (TriggerOnce& trigger : triggers_) {
-    if (trigger.fired || !io_->enabled(trigger.entity)) continue;
-    const bool overlap = std::any_of(trigger.hulls.begin(), trigger.hulls.end(),
-                                     [&](const auto& hull) { return scene.playerOverlapsHull(hull); });
-    if (!overlap) continue;
-    std::string error;
-    if (!io_->fire(trigger.entity, "OnStartTouch", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error)) {
-      ANVIL_WARN("entity", "trigger_once %zu OnStartTouch: %s", trigger.entity, error.c_str());
+  for (Trigger& trigger : triggers_) {
+    if ((trigger.once && trigger.fired) || !io_->enabled(trigger.entity)) {
+      if (!trigger.once) trigger.inside = false;
       continue;
     }
-    trigger.fired = true;
+    const bool overlap = std::any_of(trigger.hulls.begin(), trigger.hulls.end(),
+                                     [&](const auto& hull) { return scene.playerOverlapsHull(hull); });
+    if (!overlap) {
+      trigger.inside = false;
+      continue;
+    }
+    if (!trigger.once && trigger.inside) continue;
+    std::string error;
+    if (!io_->fire(trigger.entity, "OnStartTouch", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error)) {
+      ANVIL_WARN("entity", "%s %zu OnStartTouch: %s", trigger.once ? "trigger_once" : "trigger_multiple",
+                 trigger.entity, error.c_str());
+      continue;
+    }
+    if (trigger.once) trigger.fired = true;
+    else trigger.inside = true;
   }
 }
 

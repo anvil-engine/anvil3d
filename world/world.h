@@ -56,7 +56,7 @@ public:
   void draw(const Camera& camera, float aspect, bool usePvs = true);
   // Advances delayed original entity outputs on the fixed simulation clock.
   void tick(float dt);
-  // Fires authored trigger_once outputs when the player's real Jolt shape overlaps an authored BSP hull.
+  // Fires authored trigger_once/trigger_multiple outputs when the player's real Jolt shape enters an authored BSP hull.
   void checkTriggers(const physics::Scene& scene);
   const DrawStats& stats() const { return stats_; } // of the last draw()
   Camera spawnPoint() const;                           // first info_player_start at eye height, else origin
@@ -99,12 +99,14 @@ private:
   std::unique_ptr<EntityIo> io_;
   double ioTime_ = 0;
   uint32_t ioDepth_ = 0;
-  struct TriggerOnce {
+  struct Trigger {
     size_t entity = 0;
     std::vector<std::vector<bsp::Vec3>> hulls;
+    bool once = false;
     bool fired = false;
+    bool inside = false;
   };
-  std::vector<TriggerOnce> triggers_;
+  std::vector<Trigger> triggers_;
   struct DynamicProp {
     size_t entity = 0;
     uint32_t model = 0;
