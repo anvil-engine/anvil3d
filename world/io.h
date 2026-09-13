@@ -63,6 +63,7 @@ private:
   std::vector<std::optional<double>> nextTimer_;
   std::vector<bool> timerRandom_;
   std::vector<double> values_;
+  std::vector<double> compareValues_;
   std::vector<std::optional<double>> minimums_, maximums_;
   std::vector<bool> valuesValid_;
   std::mt19937 timerRng_;

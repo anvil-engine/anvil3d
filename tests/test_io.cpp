@@ -137,5 +137,22 @@ int main() {
   CHECK(caseIo.input(0, "Pick", "", 0, receive, &error) && delivered.size() == 2);
   CHECK(!caseIo.input(0, "Unknown", "", 0, receive, &error) && !error.empty());
 
+  std::vector<bsp::Entity> compares = {
+      {{{"classname", "logic_compare"}, {"InitialValue", "2"}, {"CompareValue", "3"},
+        {"OnEqual", "sink,Equal,,0,-1"}, {"OnNotEqual", "sink,NotEqual,,0,-1"},
+        {"OnGreaterThan", "sink,Greater,,0,-1"}, {"OnLessThan", "sink,Less,,0,-1"}}},
+      {{{"targetname", "sink"}}},
+  };
+  world::EntityIo compareIo(compares);
+  delivered.clear();
+  CHECK(compareIo.input(0, "Compare", "", 0, receive, &error) && delivered.size() == 2 &&
+        delivered[0].input == "NotEqual" && delivered[1].input == "Less");
+  CHECK(compareIo.input(0, "SetValue", "4", 0, receive, &error));
+  CHECK(compareIo.input(0, "Compare", "", 0, receive, &error) && delivered.size() == 4 &&
+        delivered[2].input == "NotEqual" && delivered[3].input == "Greater");
+  CHECK(compareIo.input(0, "SetCompareValue", "4", 0, receive, &error));
+  CHECK(compareIo.input(0, "Compare", "", 0, receive, &error) && delivered.size() == 5 && delivered.back().input == "Equal");
+  CHECK(!compareIo.input(0, "SetValue", "inf", 0, receive, &error) && !error.empty());
+
   return TEST_RESULT();
 }

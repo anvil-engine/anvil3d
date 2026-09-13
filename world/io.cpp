@@ -97,6 +97,7 @@ EntityIo::EntityIo(const std::vector<bsp::Entity>& entities) : entities_(entitie
   nextTimer_.resize(entities.size());
   timerRandom_.reserve(entities.size());
   values_.reserve(entities.size());
+  compareValues_.reserve(entities.size());
   minimums_.reserve(entities.size());
   maximums_.reserve(entities.size());
   valuesValid_.reserve(entities.size());
@@ -126,8 +127,13 @@ EntityIo::EntityIo(const std::vector<bsp::Entity>& entities) : entities_(entitie
 
     double value = 0;
     bool valid = true;
-    if (const auto initial = authoredValue(entity, isClass(entity, "logic_branch") ? "InitialValue" : "startvalue"))
+    const bool compare = isClass(entity, "logic_compare");
+    if (const auto initial = authoredValue(entity, compare ? "InitialValue" : (isClass(entity, "logic_branch") ? "InitialValue" : "startvalue")))
       valid = parseNumber(*initial, value);
+    double compareValue = 0;
+    if (compare) {
+      if (const auto authored = authoredValue(entity, "CompareValue")) valid = parseNumber(*authored, compareValue) && valid;
+    }
     std::optional<double> minimum, maximumValue;
     if (isClass(entity, "math_counter")) {
       if (const auto text = authoredValue(entity, "min")) {
@@ -144,6 +150,7 @@ EntityIo::EntityIo(const std::vector<bsp::Entity>& entities) : entities_(entitie
       if (minimum && maximumValue && *minimum > *maximumValue) valid = false;
     }
     values_.push_back(value);
+    compareValues_.push_back(compareValue);
     minimums_.push_back(minimum);
     maximums_.push_back(maximumValue);
     valuesValid_.push_back(valid);
@@ -271,6 +278,27 @@ bool EntityIo::input(size_t entity, std::string_view inputName, std::string_view
       return false;
     }
     return fire(entity, std::string("On") + std::string(selected), now, callback, error);
+  } else if (isClass(entities_[entity], "logic_compare")) {
+    if (!valuesValid_[entity]) {
+      fail(error, "logic_compare values must be finite numbers");
+      return false;
+    }
+    if (equalInsensitive(inputName, "SetValue") || equalInsensitive(inputName, "SetCompareValue")) {
+      double value = 0;
+      if (!parseNumber(parameter, value)) {
+        fail(error, "logic_compare input requires a finite number");
+        return false;
+      }
+      (equalInsensitive(inputName, "SetValue") ? values_ : compareValues_)[entity] = value;
+    } else if (equalInsensitive(inputName, "Compare")) {
+      if (values_[entity] == compareValues_[entity]) return fire(entity, "OnEqual", now, callback, error);
+      if (!fire(entity, "OnNotEqual", now, callback, error)) return false;
+      return fire(entity, values_[entity] > compareValues_[entity] ? "OnGreaterThan" : "OnLessThan", now, callback,
+                  error);
+    } else {
+      fail(error, "unsupported logic_compare input");
+      return false;
+    }
   } else if (isClass(entities_[entity], "math_counter")) {
     if (!valuesValid_[entity]) {
       fail(error, "math_counter authored values must be finite and min must not exceed max");
