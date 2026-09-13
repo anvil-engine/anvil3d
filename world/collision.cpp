@@ -115,7 +115,7 @@ CollisionStats buildCollision(physics::Scene& scene, const bsp::Map& m, FileSyst
   if (!m.models.empty()) addModel(0,{});
   for (const auto& e:brushEntities(m,bsp::parseEntities(m.entities))) {
     if (e.classname.starts_with("trigger_")||e.classname=="func_door"||e.classname=="func_door_rotating"||
-        e.classname=="func_tracktrain"||e.classname=="func_button"||
+        e.classname=="func_tracktrain"||e.classname=="func_button"||e.classname=="func_breakable"||
         e.classname=="func_illusionary"||
         e.classname=="func_areaportal"||e.classname=="func_areaportalwindow") continue;
     addModel(e.model,e.transform);

@@ -422,6 +422,23 @@ int main(int argc, char** argv) {
     CHECK(!world::linearDoorAllowsInput(true, true, "Toggle"));
     CHECK(world::linearDoorAllowsInput(true, true, "Close"));
     CHECK(!world::linearDoorAllowsInput(false, false, "Open"));
+    const auto breakable = world::breakableConfig(
+      bsp::parseEntities(R"({ "classname" "func_breakable" "health" "25" "material" "2" })")[0]);
+    CHECK(breakable && near(breakable->health, 25) && breakable->material == 2 && breakable->damageable);
+    const auto triggerOnly = world::breakableConfig(
+      bsp::parseEntities(R"({ "classname" "func_breakable" "spawnflags" "1" })")[0]);
+    CHECK(triggerOnly && !triggerOnly->damageable);
+    const auto unbreakableGlass = world::breakableConfig(
+      bsp::parseEntities(R"({ "classname" "func_breakable" "material" "7" })")[0]);
+    CHECK(unbreakableGlass && !unbreakableGlass->damageable);
+    float breakableHealth = 25;
+    CHECK(!world::applyBreakableDamage(breakableHealth, true, 10) && near(breakableHealth, 15));
+    CHECK(world::applyBreakableDamage(breakableHealth, true, 15) && near(breakableHealth, 0));
+    breakableHealth = 25;
+    CHECK(!world::applyBreakableDamage(breakableHealth, false, 100) && near(breakableHealth, 25));
+    CHECK(!world::applyBreakableDamage(breakableHealth, true, -1) && near(breakableHealth, 25));
+    CHECK(!world::breakableConfig(bsp::parseEntities(R"({ "classname" "func_breakable" "health" "nan" })")[0]));
+    CHECK(!world::breakableConfig(bsp::parseEntities(R"({ "classname" "func_breakable" "material" "99" })")[0]));
     CHECK(world::normalizeMapName("d1_trainstation_02") == "d1_trainstation_02");
     CHECK(world::normalizeMapName(" maps\\D1_trainstation_02.bsp ") == "d1_trainstation_02");
     CHECK(!world::normalizeMapName("../outside"));

@@ -91,6 +91,7 @@ private:
   void setupTriggers();
   void setupDoors();
   void setupButtons();
+  void setupBreakables();
   void setupTrackTrains();
   void setupAmbientSounds();
   void playAmbient(size_t ambient);
@@ -100,6 +101,7 @@ private:
   void beginDoor(size_t entity, bool open);
   void updateDoorPose(size_t door, physics::Scene* scene);
   void updateTrackTrainPose(size_t train, physics::Scene* scene);
+  void breakEntity(size_t entity);
   void appendVisible(uint32_t batch, std::vector<render::Draw3D>& out); // world batch, visible faces merged
   render::TextureHandle texture(std::string_view name);
 
@@ -160,6 +162,14 @@ private:
     Transform attachedTransform;
   };
   std::vector<TrackTrain> trackTrains_;
+  struct Breakable {
+    size_t entity = 0, instance = 0;
+    float health = 1;
+    int material = 0;
+    bool damageable = true, broken = false, physicsDirty = false;
+    std::vector<physics::Body> bodies;
+  };
+  std::vector<Breakable> breakables_;
   struct DynamicProp {
     size_t entity = 0;
     uint32_t model = 0;

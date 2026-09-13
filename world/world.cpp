@@ -196,6 +196,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   w->setupEntities(mesh);
   w->setupDoors();
   w->setupButtons();
+  w->setupBreakables();
   w->setupTrackTrains();
   w->setupProps();
   w->setupDynamicProps();
@@ -632,6 +633,25 @@ void World::setupButtons() {
   }
 }
 
+void World::setupBreakables() {
+  for (size_t i = 0; i < entities_.size(); ++i) {
+    if (!iequals(entities_[i].entity.classname, "func_breakable")) continue;
+    const auto config = breakableConfig(entityLump_[entities_[i].entity.entity]);
+    if (!config) {
+      ANVIL_WARN("entity", "func_breakable %zu has invalid health/material/spawnflags",
+                 entities_[i].entity.entity);
+      continue;
+    }
+    Breakable breakable;
+    breakable.entity = entities_[i].entity.entity;
+    breakable.instance = i;
+    breakable.health = config->health;
+    breakable.material = config->material;
+    breakable.damageable = config->damageable;
+    breakables_.push_back(std::move(breakable));
+  }
+}
+
 void World::setupTrackTrains() {
   auto number = [&](const bsp::Entity& entity, std::string_view key, float fallback) {
     const std::string_view text = entity.get(key);
@@ -706,7 +726,31 @@ void World::attachPhysics(physics::Scene& scene) {
       train.basePoses.push_back(scene.bodyPose(body));
     }
   }
+  for (Breakable& breakable : breakables_) {
+    const EntityInstance& instance = entities_[breakable.instance];
+    for (const auto& hull : modelHulls(map_, instance.entity.model, instance.entity.transform, true)) {
+      const physics::Body body = scene.addKinematicHull(hull);
+      if (body == physics::invalidBody) {
+        ANVIL_WARN("entity", "func_breakable %zu has invalid collision hull", breakable.entity);
+        continue;
+      }
+      breakable.bodies.push_back(body);
+      scene.setBodyEnabled(body, io_->enabled(breakable.entity));
+    }
+  }
   scene.optimize();
+}
+
+void World::breakEntity(size_t entity) {
+  const auto found = std::find_if(breakables_.begin(), breakables_.end(),
+                                  [&](const Breakable& item) { return item.entity == entity; });
+  if (found == breakables_.end() || found->broken || !io_->enabled(entity)) return;
+  found->broken = true;
+  found->physicsDirty = true;
+  io_->setEnabled(entity, false);
+  std::string error;
+  if (!io_->fire(entity, "OnBreak", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
+    ANVIL_WARN("entity", "func_breakable %zu OnBreak: %s", entity, error.c_str());
 }
 
 void World::updateDoorPose(size_t index, physics::Scene* scene) {
@@ -1032,6 +1076,26 @@ void World::deliverInput(const InputDelivery& delivery) {
         beginDoor(delivery.target, press);
       }
     } else warnOnce("Unsupported entity input func_button." + delivery.input);
+  } else if (iequals(entity.get("classname"), "func_breakable")) {
+    const auto found = std::find_if(breakables_.begin(), breakables_.end(),
+                                    [&](const Breakable& item) { return item.entity == delivery.target; });
+    if (found == breakables_.end()) warnOnce("func_breakable has no drawable BSP model or valid properties");
+    else if (iequals(delivery.input, "Enable") || iequals(delivery.input, "Disable")) {
+      if (!found->broken) {
+        io_->setEnabled(delivery.target, iequals(delivery.input, "Enable"));
+        found->physicsDirty = true;
+      }
+    } else if (iequals(delivery.input, "Break")) breakEntity(delivery.target);
+    else if (iequals(delivery.input, "TakeDamage")) {
+      float damage = 0;
+      const auto parsed = std::from_chars(delivery.parameter.data(), delivery.parameter.data() + delivery.parameter.size(), damage);
+      if (parsed.ec != std::errc{} || parsed.ptr != delivery.parameter.data() + delivery.parameter.size() ||
+          !std::isfinite(damage) || damage <= 0)
+        warnOnce("func_breakable TakeDamage requires a finite positive number");
+      else if (io_->enabled(delivery.target) &&
+               applyBreakableDamage(found->health, found->damageable, damage))
+        breakEntity(delivery.target);
+    } else warnOnce("Unsupported entity input func_breakable." + delivery.input);
   } else if (iequals(entity.get("classname"), "func_door") || iequals(entity.get("classname"), "func_door_rotating")) {
     auto door = std::find_if(doors_.begin(), doors_.end(), [&](const Door& item) { return item.entity == delivery.target; });
     if (iequals(delivery.input, "Enable") || iequals(delivery.input, "Disable")) {
@@ -1103,6 +1167,13 @@ void World::tick(float dt, physics::Scene* scene) {
   if (!io_->tick(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); }, &error))
     ANVIL_WARN("entity", "logic_timer: %s", error.c_str());
   io_->dispatch(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); });
+  for (Breakable& breakable : breakables_) {
+    if (!breakable.physicsDirty) continue;
+    if (scene)
+      for (physics::Body body : breakable.bodies)
+        scene->setBodyEnabled(body, !breakable.broken && io_->enabled(breakable.entity));
+    breakable.physicsDirty = false;
+  }
   for (size_t i = 0; i < doors_.size(); ++i) {
     Door& door = doors_[i];
     if (door.physicsDirty) {

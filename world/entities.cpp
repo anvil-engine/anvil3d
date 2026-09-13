@@ -144,6 +144,38 @@ bool linearDoorAllowsInput(bool enabled, bool locked, std::string_view input) {
   return input != "Open" && input != "Toggle";
 }
 
+std::optional<BreakableConfig> breakableConfig(const bsp::Entity& entity) {
+  BreakableConfig out;
+  const std::string_view health = entity.get("health");
+  if (!health.empty()) {
+    const auto parsed = std::from_chars(health.data(), health.data() + health.size(), out.health);
+    if (parsed.ec != std::errc{} || parsed.ptr != health.data() + health.size() ||
+        !std::isfinite(out.health) || out.health <= 0)
+      return std::nullopt;
+  }
+  const std::string_view material = entity.get("material");
+  if (!material.empty()) {
+    const auto parsed = std::from_chars(material.data(), material.data() + material.size(), out.material);
+    if (parsed.ec != std::errc{} || parsed.ptr != material.data() + material.size() ||
+        out.material < 0 || out.material > 10)
+      return std::nullopt;
+  }
+  int flags = 0;
+  const std::string_view spawnflags = entity.get("spawnflags");
+  if (!spawnflags.empty()) {
+    const auto parsed = std::from_chars(spawnflags.data(), spawnflags.data() + spawnflags.size(), flags);
+    if (parsed.ec != std::errc{} || parsed.ptr != spawnflags.data() + spawnflags.size()) return std::nullopt;
+  }
+  out.damageable = !(flags & 1) && out.material != 7;
+  return out;
+}
+
+bool applyBreakableDamage(float& health, bool damageable, float damage) {
+  if (!damageable || !std::isfinite(damage) || damage <= 0 || health <= 0) return false;
+  health -= damage;
+  return health <= 0;
+}
+
 std::optional<size_t> findPathTrack(const std::vector<bsp::Entity>& entities, std::string_view name) {
   if (name.empty() || name.size() > 1024) return std::nullopt;
   for (size_t i = 0; i < entities.size(); ++i)

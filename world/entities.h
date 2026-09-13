@@ -46,6 +46,12 @@ struct RotatingDoorMove {
   float distance = 90;
 };
 
+struct BreakableConfig {
+  float health = 1;
+  int material = 0;
+  bool damageable = true;
+};
+
 // Interprets func_door movedir/lip against the authored local brush bounds.
 std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bsp::Vec3& mins,
                                              const bsp::Vec3& maxs);
@@ -55,6 +61,10 @@ std::optional<LinearDoorMove> linearButtonMove(const bsp::Entity& entity, const 
 // Interprets func_door_rotating axis flags, reverse direction and authored angular distance.
 std::optional<RotatingDoorMove> rotatingDoorMove(const bsp::Entity& entity);
 bool linearDoorAllowsInput(bool enabled, bool locked, std::string_view input);
+// Reads func_breakable health, material and trigger-only flag. Invalid authored values are rejected.
+std::optional<BreakableConfig> breakableConfig(const bsp::Entity& entity);
+// Applies valid damage and reports whether health reached zero.
+bool applyBreakableDamage(float& health, bool damageable, float damage);
 
 // Resolves a Source entity targetname to a path_track. Name matching is ASCII case-insensitive.
 std::optional<size_t> findPathTrack(const std::vector<bsp::Entity>& entities, std::string_view name);
