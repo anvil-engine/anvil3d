@@ -4,6 +4,7 @@
 #include "physics/physics.h"
 #include "render/render.h"
 #include "world/entities.h"
+#include "world/choreo.h"
 #include "world/io.h"
 #include "world/props.h"
 #include "world/visibility.h"
@@ -99,6 +100,7 @@ private:
   void setupAmbientSounds();
   void setupSoundscapes();
   void setupScriptedSequences();
+  void setupChoreographedScenes();
   void setupFades();
   void playAmbient(size_t ambient);
   void stopAmbient(size_t ambient);
@@ -110,6 +112,8 @@ private:
   void updateTrackTrainPose(size_t train, physics::Scene* scene);
   void breakEntity(size_t entity);
   void beginScriptedSequence(size_t entity);
+  void beginChoreographedScene(size_t entity);
+  void stopChoreographedScene(size_t entity, bool completed);
   void appendVisible(uint32_t batch, std::vector<render::Draw3D>& out); // world batch, visible faces merged
   render::TextureHandle texture(std::string_view name);
 
@@ -205,6 +209,14 @@ private:
     bool active = false;
   };
   std::vector<ScriptedSequence> scriptedSequences_;
+  struct ChoreographedScene {
+    size_t entity = 0;
+    ChoreoScene scene;
+    double startedAt = 0;
+    size_t nextEvent = 0;
+    bool active = false;
+  };
+  std::vector<ChoreographedScene> choreographedScenes_;
   struct FadeEffect {
     size_t entity = 0;
     EnvFadeConfig config;

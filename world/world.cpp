@@ -12,6 +12,7 @@
 #include "platform/audio.h"
 #include "world/sky.h"
 #include "world/collision.h"
+#include "world/choreo.h"
 #include "world/soundscape.h"
 #include "world/worldmesh.h"
 
@@ -205,6 +206,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   w->setupTriggers();
   w->io_ = std::make_unique<EntityIo>(w->entityLump_);
   w->setupScriptedSequences();
+  w->setupChoreographedScenes();
   w->setupFades();
   w->setupAmbientSounds();
   w->setupSoundscapes();
@@ -539,6 +541,61 @@ void World::setupScriptedSequences() {
     const double beginAt = ioTime_ + config->delay;
     scriptedSequences_.push_back({i, std::move(*config), beginAt});
   }
+}
+
+void World::setupChoreographedScenes() {
+  for (size_t i = 0; i < entityLump_.size(); ++i) {
+    const auto& entity = entityLump_[i];
+    if (!iequals(entity.get("classname"), "logic_choreographed_scene")) continue;
+    std::string path(entity.get("SceneFile"));
+    if (path.empty()) path = entity.get("scenefile");
+    if (!path.starts_with("scenes/") && !path.starts_with("scenes\\")) path = "scenes/" + path;
+    if (!lower(path).ends_with(".vcd")) path += ".vcd";
+    const auto normalized = normalizePath(path);
+    const auto text = normalized ? fs_.readFile(*normalized, "GAME") : std::nullopt;
+    if (!text) {
+      ANVIL_WARN("entity", "logic_choreographed_scene %zu missing VCD: %s", i, path.c_str());
+      continue;
+    }
+    std::string error;
+    auto scene = parseChoreo(*text, &error);
+    if (!scene) {
+      ANVIL_WARN("entity", "logic_choreographed_scene %zu %s: %s", i, path.c_str(), error.c_str());
+      continue;
+    }
+    for (const auto& event : scene->events)
+      if (event.type == ChoreoEventType::Unsupported)
+        warnOnce("Unsupported VCD event class " + event.sourceType + " in " + path);
+    choreographedScenes_.push_back({i, std::move(*scene)});
+    int flags = 0;
+    const auto authoredFlags = entity.get("spawnflags");
+    const auto parsed = std::from_chars(authoredFlags.data(), authoredFlags.data() + authoredFlags.size(), flags);
+    if (parsed.ec == std::errc{} && parsed.ptr == authoredFlags.data() + authoredFlags.size() && (flags & 1))
+      beginChoreographedScene(i);
+  }
+}
+
+void World::beginChoreographedScene(size_t entity) {
+  auto found = std::find_if(choreographedScenes_.begin(), choreographedScenes_.end(),
+                            [&](const ChoreographedScene& item) { return item.entity == entity; });
+  if (found == choreographedScenes_.end() || found->active || !io_->enabled(entity)) return;
+  found->startedAt = ioTime_;
+  found->nextEvent = 0;
+  found->active = true;
+  std::string error;
+  if (!io_->fire(entity, "OnStart", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
+    ANVIL_WARN("entity", "logic_choreographed_scene %zu OnStart: %s", entity, error.c_str());
+}
+
+void World::stopChoreographedScene(size_t entity, bool completed) {
+  auto found = std::find_if(choreographedScenes_.begin(), choreographedScenes_.end(),
+                            [&](const ChoreographedScene& item) { return item.entity == entity; });
+  if (found == choreographedScenes_.end() || !found->active) return;
+  found->active = false;
+  std::string error;
+  const char* output = completed ? "OnCompletion" : "OnCanceled";
+  if (!io_->fire(entity, output, ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
+    ANVIL_WARN("entity", "logic_choreographed_scene %zu %s: %s", entity, output, error.c_str());
 }
 
 void World::beginScriptedSequence(size_t entity) {
@@ -1192,7 +1249,14 @@ void World::deliverInput(const InputDelivery& delivery) {
   const bool trigger = iequals(entity.get("classname"), "trigger_once") ||
                        iequals(entity.get("classname"), "trigger_multiple") ||
                        iequals(entity.get("classname"), "trigger_changelevel");
-  if (iequals(entity.get("classname"), "env_fade")) {
+  if (iequals(entity.get("classname"), "logic_choreographed_scene")) {
+    if (iequals(delivery.input, "Start")) beginChoreographedScene(delivery.target);
+    else if (iequals(delivery.input, "Stop")) stopChoreographedScene(delivery.target, true);
+    else if (iequals(delivery.input, "Cancel")) stopChoreographedScene(delivery.target, false);
+    else if (iequals(delivery.input, "Enable") || iequals(delivery.input, "Disable"))
+      io_->setEnabled(delivery.target, iequals(delivery.input, "Enable"));
+    else warnOnce("Unsupported entity input logic_choreographed_scene." + delivery.input);
+  } else if (iequals(entity.get("classname"), "env_fade")) {
     const auto fade = std::find_if(fades_.begin(), fades_.end(),
                                    [&](const FadeEffect& item) { return item.entity == delivery.target; });
     if (fade == fades_.end()) warnOnce("env_fade has invalid authored properties");
@@ -1409,6 +1473,61 @@ void World::tick(float dt, physics::Scene* scene) {
   if (!io_->tick(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); }, &error))
     ANVIL_WARN("entity", "logic_timer: %s", error.c_str());
   io_->dispatch(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); });
+  for (ChoreographedScene& choreo : choreographedScenes_) {
+    if (!choreo.active) continue;
+    const double elapsed = ioTime_ - choreo.startedAt;
+    while (choreo.nextEvent < choreo.scene.events.size() &&
+           choreo.scene.events[choreo.nextEvent].start <= elapsed) {
+      const ChoreoEvent& event = choreo.scene.events[choreo.nextEvent++];
+      if (event.type == ChoreoEventType::Unsupported) continue;
+      if (event.type == ChoreoEventType::Trigger) {
+        int triggerNumber = 0;
+        const auto parsed = std::from_chars(event.parameter.data(), event.parameter.data() + event.parameter.size(), triggerNumber);
+        if (parsed.ec != std::errc{} || parsed.ptr != event.parameter.data() + event.parameter.size() ||
+            triggerNumber < 1 || triggerNumber > 8) {
+          warnOnce("VCD trigger event requires authored number 1..8");
+          continue;
+        }
+        std::string error;
+        const std::string output = "OnTrigger" + std::to_string(triggerNumber);
+        if (!io_->fire(choreo.entity, output, ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
+          ANVIL_WARN("entity", "logic_choreographed_scene %zu %s: %s", choreo.entity, output.c_str(), error.c_str());
+        continue;
+      }
+      const auto actor = std::find_if(choreo.scene.actors.begin(), choreo.scene.actors.end(),
+                                      [&](const std::string& name) { return iequals(name, event.actor); });
+      if (actor == choreo.scene.actors.end()) {
+        warnOnce("VCD event actor has no authored target slot: " + event.actor);
+        continue;
+      }
+      const size_t slot = size_t(actor - choreo.scene.actors.begin()) + 1;
+      if (slot > 8) {
+        warnOnce("VCD actor exceeds logic_choreographed_scene target1..target8");
+        continue;
+      }
+      const std::string targetKey = "target" + std::to_string(slot);
+      const std::string_view targetName = entityLump_[choreo.entity].get(targetKey);
+      size_t target = entityLump_.size();
+      for (size_t i = 0; i < entityLump_.size(); ++i)
+        if (iequals(entityLump_[i].get("targetname"), targetName)) { target = i; break; }
+      if (target == entityLump_.size()) {
+        warnOnce("logic_choreographed_scene target slot not found: " + std::string(targetName));
+        continue;
+      }
+      const auto classname = entityLump_[target].get("classname");
+      if (event.type == ChoreoEventType::Sequence && iequals(classname, "scripted_sequence"))
+        deliverInput({choreo.entity, target, "BeginSequence", event.parameter});
+      else if (event.type == ChoreoEventType::Sequence &&
+               (iequals(classname, "prop_dynamic") || supportedVisualNpcClass(classname)))
+        deliverInput({choreo.entity, target, "SetAnimation", event.parameter});
+      else if (event.type == ChoreoEventType::Speak && iequals(classname, "ambient_generic"))
+        deliverInput({choreo.entity, target, "Start", {}});
+      else
+        warnOnce("Unsupported VCD " + event.sourceType + " target classname " + std::string(classname));
+    }
+    if (choreo.active && choreo.nextEvent == choreo.scene.events.size() && elapsed >= choreo.scene.duration)
+      stopChoreographedScene(choreo.entity, true);
+  }
   if (activeFade_ && !fadeHeld_ && !fadeCompleteFired_) {
     const double elapsed = ioTime_ - fadeStart_;
     const double completeAt = fadeReverse_ ? activeFade_->config.duration

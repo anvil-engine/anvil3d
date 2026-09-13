@@ -40,6 +40,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
   - [x] Implement generic `trigger_changelevel` player overlap, validated `map`/`mapname`, and one-shot map transition through the engine console.
   - [x] Add authored visual foundation for allowlisted humanoid `npc_*` entities: real MDL loading, idle/`DefaultAnim`, `Enable`, `Disable`, and `SetAnimation`; AI/combat remain unsupported.
   - [x] Bridge authored `scripted_sequence` delay/repeat and Begin/Cancel lifecycle to loaded `prop_dynamic` and supported NPC visual animations; NPC AI execution remains unsupported.
+  - [x] Parse bounded VCD files and bridge `logic_choreographed_scene` timed sequence, speak, and trigger events with Start/Stop/Cancel and lifecycle outputs; retail scene image/event semantics remain unsupported.
   - [ ] Implement additional authored entity input handlers and entity behavior; remaining trigger classes and unsupported inputs remain visible warnings.
 - [x] Decode PCM WAV resources and play `ambient_generic` through SDL3 audio, including authored volume/pitch/radius/loop flags and common inputs.
 - [~] Resolve `ambient_generic` names through `scripts/game_sounds_manifest.txt` (`wave` and first `rndwave` entry); broader `game_sounds*.txt` layout and playback semantics remain.
