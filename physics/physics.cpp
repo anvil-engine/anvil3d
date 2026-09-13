@@ -89,16 +89,17 @@ struct Scene::Impl {
     character = nullptr;
     for (auto id : bodies) { system.GetBodyInterface().RemoveBody(id); system.GetBodyInterface().DestroyBody(id); }
   }
-  Body add(const JPH::Shape* shape, JPH::Vec3 center, float mass, bool playerClip) {
-    JPH::BodyCreationSettings s(shape, center, JPH::Quat::sIdentity(), mass > 0 ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
-                                mass > 0 ? moving : (playerClip ? clip : solid));
+  Body add(const JPH::Shape* shape, JPH::Vec3 center, float mass, bool playerClip, bool kinematic = false) {
+    const auto motion = kinematic ? JPH::EMotionType::Kinematic : mass > 0 ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static;
+    JPH::BodyCreationSettings s(shape, center, JPH::Quat::sIdentity(), motion,
+                                kinematic || mass > 0 ? moving : (playerClip ? clip : solid));
     s.mFriction = 0.6f;
     if (mass > 0) {
       s.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
       s.mMassPropertiesOverride.mMass = mass;
       s.mMotionQuality = JPH::EMotionQuality::LinearCast;
     }
-    const auto id = system.GetBodyInterface().CreateAndAddBody(s, mass > 0 ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+    const auto id = system.GetBodyInterface().CreateAndAddBody(s, motion == JPH::EMotionType::Static ? JPH::EActivation::DontActivate : JPH::EActivation::Activate);
     if (id.IsInvalid()) { ANVIL_ERROR("physics", "Jolt body capacity exceeded"); return invalidBody; }
     bodies.push_back(id);
     return id.GetIndexAndSequenceNumber();
@@ -127,6 +128,20 @@ Body Scene::addHull(std::span<const Vec3> points, bool playerClip) {
   if (result.HasError()) { ANVIL_WARN("physics", "Invalid collision hull: %s", result.GetError().c_str()); return invalidBody; }
   return impl_->add(result.Get(), toJ(center), 0, playerClip);
 }
+Body Scene::addKinematicHull(std::span<const Vec3> points) {
+  if (points.size() < 4) return invalidBody;
+  JPH::ConvexHullShapeSettings settings;
+  settings.mMaxConvexRadius = 0;
+  const Vec3 center = points.front();
+  if (!finite(center)) return invalidBody;
+  for (const Vec3 point : points) {
+    if (!finite(point)) return invalidBody;
+    settings.mPoints.push_back(toJ({point.x - center.x, point.y - center.y, point.z - center.z}));
+  }
+  auto result = settings.Create();
+  if (result.HasError()) return invalidBody;
+  return impl_->add(result.Get(), toJ(center), 0, false, true);
+}
 Body Scene::addMesh(std::span<const Triangle> triangles) {
   JPH::TriangleList list;
   for (const auto& t : triangles) {
@@ -140,6 +155,25 @@ Body Scene::addMesh(std::span<const Triangle> triangles) {
   return impl_->add(result.Get(), JPH::Vec3::sZero(), 0, false);
 }
 void Scene::optimize() { impl_->system.OptimizeBroadPhase(); }
+bool Scene::setBodyPose(Body body, const Pose& pose) {
+  if (body == invalidBody || !finite(pose.position) || !std::isfinite(pose.x) || !std::isfinite(pose.y) ||
+      !std::isfinite(pose.z) || !std::isfinite(pose.w)) return false;
+  JPH::Quat rotation(pose.x, pose.y, pose.z, pose.w);
+  if (rotation.LengthSq() < 1e-12f) return false;
+  rotation = rotation.Normalized();
+  impl_->system.GetBodyInterface().SetPositionAndRotation(
+    JPH::BodyID(body), toJ(pose.position), rotation, JPH::EActivation::Activate);
+  return true;
+}
+bool Scene::setBodyEnabled(Body body, bool enabled) {
+  if (body == invalidBody) return false;
+  const JPH::BodyID id(body);
+  auto& bodies = impl_->system.GetBodyInterface();
+  const bool added = bodies.IsAdded(id);
+  if (enabled && !added) bodies.AddBody(id, JPH::EActivation::Activate);
+  else if (!enabled && added) bodies.RemoveBody(id);
+  return true;
+}
 void Scene::spawnPlayer(Vec3 feet) {
   if (!finite(feet)) return;
   JPH::CharacterVirtualSettings s;

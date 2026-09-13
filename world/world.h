@@ -1,6 +1,7 @@
 #pragma once
 
 #include "formats/bsp.h"
+#include "physics/physics.h"
 #include "render/render.h"
 #include "world/entities.h"
 #include "world/io.h"
@@ -20,8 +21,6 @@ namespace anvil {
 class Archive;
 class FileSystem;
 } // namespace anvil
-namespace anvil::physics { class Scene; }
-
 namespace anvil::world {
 
 // Source camera: world units, z up; degrees, pitch > 0 looks down, yaw > 0 turns left (toward +y).
@@ -55,7 +54,9 @@ public:
   // Inside device beginFrame/endFrame. Submits PVS- and frustum-visible faces (usePvs false = frustum only).
   void draw(const Camera& camera, float aspect, bool usePvs = true);
   // Advances delayed original entity outputs on the fixed simulation clock.
-  void tick(float dt);
+  void tick(float dt, physics::Scene* scene = nullptr);
+  // Adds authored moving brush hulls after the static map collision has been built.
+  void attachPhysics(physics::Scene& scene);
   // Fires authored trigger_once/trigger_multiple outputs when the player's real Jolt shape enters an authored BSP hull.
   void checkTriggers(const physics::Scene& scene);
   const DrawStats& stats() const { return stats_; } // of the last draw()
@@ -83,8 +84,11 @@ private:
   void warnOnce(const std::string& message); // gaps logged once per map, not once per material
   void setupSky();
   void setupTriggers();
+  void setupDoors();
   void startIo();
   void deliverInput(const InputDelivery& delivery);
+  void beginDoor(size_t entity, bool open);
+  void updateDoorPose(size_t door, physics::Scene* scene);
   void appendVisible(uint32_t batch, std::vector<render::Draw3D>& out); // world batch, visible faces merged
   render::TextureHandle texture(std::string_view name);
 
@@ -107,6 +111,20 @@ private:
     bool inside = false;
   };
   std::vector<Trigger> triggers_;
+  enum class DoorState { Closed, Opening, Open, Closing };
+  struct Door {
+    size_t entity = 0, instance = 0;
+    bsp::Vec3 closed{}, open{}, current{};
+    float speed = 100, wait = 4;
+    bool toggle = false, locked = false, passable = false;
+    DoorState state = DoorState::Closed;
+    double closeAt = -1;
+    bool physicsDirty = false;
+    std::vector<physics::Body> bodies;
+    std::vector<physics::Pose> basePoses;
+    bsp::Vec3 attachedOrigin{};
+  };
+  std::vector<Door> doors_;
   struct DynamicProp {
     size_t entity = 0;
     uint32_t model = 0;

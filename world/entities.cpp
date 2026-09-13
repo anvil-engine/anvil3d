@@ -6,6 +6,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
+#include <charconv>
 
 namespace anvil::world {
 
@@ -71,6 +72,41 @@ std::vector<BrushEntity> brushEntities(const bsp::Map& map, const std::vector<bs
     out.push_back(std::move(b));
   }
   return out;
+}
+
+std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bsp::Vec3& mins,
+                                             const bsp::Vec3& maxs) {
+  bsp::Vec3 angles{};
+  const std::string movedir(entity.get("movedir"));
+  if (!movedir.empty() && std::sscanf(movedir.c_str(), "%f %f %f", &angles.x, &angles.y, &angles.z) != 3)
+    return std::nullopt;
+  bsp::Vec3 direction;
+  if (angles.x == -1) direction = {0, 0, 1};
+  else if (angles.x == -2) direction = {0, 0, -1};
+  else {
+    constexpr float kDeg = 3.14159265f / 180.0f;
+    const float pitch = angles.x * kDeg, yaw = angles.y * kDeg;
+    direction = {std::cos(pitch) * std::cos(yaw), std::cos(pitch) * std::sin(yaw), -std::sin(pitch)};
+  }
+  float lip = 0;
+  const std::string_view authoredLip = entity.get("lip");
+  if (!authoredLip.empty()) {
+    const char* end = authoredLip.data() + authoredLip.size();
+    const auto parsed = std::from_chars(authoredLip.data(), end, lip);
+    if (parsed.ec != std::errc{} || parsed.ptr != end || !std::isfinite(lip)) return std::nullopt;
+  }
+  const bsp::Vec3 size{std::max(0.0f, maxs.x - mins.x - 2), std::max(0.0f, maxs.y - mins.y - 2),
+                       std::max(0.0f, maxs.z - mins.z - 2)};
+  const float distance = std::abs(direction.x) * size.x + std::abs(direction.y) * size.y +
+                         std::abs(direction.z) * size.z - lip;
+  if (!std::isfinite(distance) || distance < 0) return std::nullopt;
+  return LinearDoorMove{direction, distance};
+}
+
+bool linearDoorAllowsInput(bool enabled, bool locked, std::string_view input) {
+  if (!enabled) return false;
+  if (!locked) return true;
+  return input != "Open" && input != "Toggle";
 }
 
 } // namespace anvil::world

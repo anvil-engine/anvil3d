@@ -33,7 +33,10 @@ public:
   Scene& operator=(const Scene&) = delete;
   Body addBox(Vec3 center, Vec3 halfExtent, float mass = 0, bool playerClip = false);
   Body addHull(std::span<const Vec3> points, bool playerClip = false);
+  Body addKinematicHull(std::span<const Vec3> points);
   Body addMesh(std::span<const Triangle> triangles);
+  bool setBodyPose(Body body, const Pose& pose);
+  bool setBodyEnabled(Body body, bool enabled);
   void optimize();
   void spawnPlayer(Vec3 feet);
   // wish = desired horizontal velocity, jump = press edge (not held state). Fixed dt in seconds.

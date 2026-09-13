@@ -386,6 +386,23 @@ int main(int argc, char** argv) {
     t = {{5, 0, 0}, {0, 90, 0}};
     world::transformBox(t, {0, 0, 0}, {10, 2, 1}, bmin, bmax);
     CHECK(near(bmin.x, 3) && near(bmax.x, 5) && near(bmin.y, 0) && near(bmax.y, 10) && near(bmax.z, 1));
+
+    const auto doorEntity = bsp::parseEntities(R"({ "classname" "func_door" "movedir" "0 90 0" "lip" "8" })");
+    CHECK(doorEntity.size() == 1);
+    if (!doorEntity.empty()) {
+      const auto move = world::linearDoorMove(doorEntity[0], {0, 0, 0}, {64, 32, 16});
+      CHECK(move && near(move->direction.x, 0) && near(move->direction.y, 1) && near(move->distance, 22));
+    }
+    const auto upDoor = bsp::parseEntities(R"({ "classname" "func_door" "movedir" "-1 0 0" })");
+    const auto up = world::linearDoorMove(upDoor[0], {0, 0, 0}, {64, 32, 16});
+    CHECK(up && near(up->direction.z, 1) && near(up->distance, 14));
+    const auto badDoor = bsp::parseEntities(R"({ "classname" "func_door" "lip" "oops" })");
+    CHECK(!world::linearDoorMove(badDoor[0], {0, 0, 0}, {64, 32, 16}));
+    CHECK(world::linearDoorAllowsInput(true, false, "Open"));
+    CHECK(!world::linearDoorAllowsInput(true, true, "Open"));
+    CHECK(!world::linearDoorAllowsInput(true, true, "Toggle"));
+    CHECK(world::linearDoorAllowsInput(true, true, "Close"));
+    CHECK(!world::linearDoorAllowsInput(false, false, "Open"));
   }
 
   // Static prop light: nearest ambient sample of the point's leaf, averaged over the 6 cube faces (linear).

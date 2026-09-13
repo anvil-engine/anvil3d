@@ -87,10 +87,11 @@ std::vector<V> brushHull(const bsp::Map& m, const bsp::Brush& b) {
   return points.size()>=4 ? points : std::vector<V>{};
 }
 
-std::vector<std::vector<V>> modelHulls(const bsp::Map& m, uint32_t model, const Transform& transform) {
+std::vector<std::vector<V>> modelHulls(const bsp::Map& m, uint32_t model, const Transform& transform, bool solidOnly) {
   std::vector<std::vector<V>> out;
   if (model >= m.models.size()) return out;
   for (uint16_t index : modelBrushes(m, m.models[model])) {
+    if (solidOnly && !(m.brushes[index].contents & mask)) continue;
     auto hull = brushHull(m, m.brushes[index]);
     for (V& point : hull) point = transform.apply(point);
     if (!hull.empty()) out.push_back(std::move(hull));
@@ -113,7 +114,8 @@ CollisionStats buildCollision(physics::Scene& scene, const bsp::Map& m, FileSyst
   };
   if (!m.models.empty()) addModel(0,{});
   for (const auto& e:brushEntities(m,bsp::parseEntities(m.entities))) {
-    if (e.classname.starts_with("trigger_")||e.classname=="func_illusionary"||e.classname=="func_areaportal"||e.classname=="func_areaportalwindow") continue;
+    if (e.classname.starts_with("trigger_")||e.classname=="func_door"||e.classname=="func_illusionary"||
+        e.classname=="func_areaportal"||e.classname=="func_areaportalwindow") continue;
     addModel(e.model,e.transform);
   }
   std::vector<physics::Triangle> triangles;
@@ -165,7 +167,7 @@ CollisionStats buildCollision(physics::Scene& scene, const bsp::Map& m, FileSyst
   if (!triangles.empty()&&scene.addMesh(triangles)==physics::invalidBody) ++stats.rejected;
   scene.optimize();
   ANVIL_INFO("physics","Jolt: %zu brushes, %zu terrain triangles, %zu prop triangles, %zu rejected",stats.brushes,stats.displacementTriangles,stats.propTriangles,stats.rejected);
-  ANVIL_WARN("physics","PARTIAL: brush entities are static; water simulation and Source movement prediction are not implemented");
+  ANVIL_WARN("physics","PARTIAL: unsupported moving brush classes are static; water simulation and Source movement prediction are not implemented");
   return stats;
 }
 }

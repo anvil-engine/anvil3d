@@ -4,6 +4,7 @@
 #include "render/render.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,5 +35,15 @@ struct BrushEntity {
 // Every entity whose "model" key names brush model *1..*(models - 1). Malformed or out-of-range numbers are
 // logged and skipped.
 std::vector<BrushEntity> brushEntities(const bsp::Map& map, const std::vector<bsp::Entity>& entities);
+
+struct LinearDoorMove {
+  bsp::Vec3 direction{};
+  float distance = 0;
+};
+
+// Interprets func_door movedir/lip against the authored local brush bounds.
+std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bsp::Vec3& mins,
+                                             const bsp::Vec3& maxs);
+bool linearDoorAllowsInput(bool enabled, bool locked, std::string_view input);
 
 } // namespace anvil::world

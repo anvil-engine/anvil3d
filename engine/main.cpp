@@ -124,6 +124,7 @@ int main(int argc, char** argv) {
       camera = level->spawnPoint();
       simulation = std::make_unique<physics::Scene>(physicsRuntime);
       world::buildCollision(*simulation, level->map(), diagnosticPlay ? &fsys : nullptr);
+      level->attachPhysics(*simulation);
       auto feet = camera.origin; feet.z -= 64;
       simulation->spawnPlayer(feet);
       if (diagnosticPlay) {
@@ -488,7 +489,7 @@ int main(int argc, char** argv) {
         const bsp::Vec3 wish{factor*(fwd*std::cos(y)+side*std::sin(y)), factor*(fwd*std::sin(y)-side*std::cos(y)), 0};
         for (int tick = 0; tick < ticks; ++tick) {
           simulation->step(float(clock.tickInterval()), wish, jumpPending);
-          level->tick(float(clock.tickInterval()));
+          level->tick(float(clock.tickInterval()), simulation.get());
           level->checkTriggers(*simulation);
           jumpPending = false;
           camera.origin = simulation->playerFeet(); camera.origin.z += 64;

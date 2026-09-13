@@ -52,6 +52,18 @@ int main(int argc,char** argv) {
     if(hit) scene.impulse(hit->body,{2000,0,0},hit->point);
     for(int i=0;i<20;++i) scene.step(dt);
     CHECK(scene.bodyPosition(box).x>15);
+    auto moving=scene.addKinematicHull(overlappingHull);
+    CHECK(moving!=physics::invalidBody);
+    auto movingPose=scene.bodyPose(moving);
+    movingPose.position.x+=200;
+    CHECK(scene.setBodyPose(moving,movingPose));
+    CHECK(scene.bodyPosition(moving).x>190);
+    CHECK(scene.setBodyEnabled(moving,false));
+    CHECK(!scene.raycast({192,0,8},{32,0,0}));
+    CHECK(scene.setBodyEnabled(moving,true));
+    CHECK(scene.raycast({192,0,8},{32,0,0}));
+    movingPose.position.x=NAN;
+    CHECK(!scene.setBodyPose(moving,movingPose));
     CHECK(scene.addBox({0,0,0},{-1,2,3})==physics::invalidBody);
     CHECK(scene.addBox({NAN,0,0},{1,1,1})==physics::invalidBody);
     auto before=scene.playerFeet(); scene.step(NAN); scene.step(-1);
@@ -105,6 +117,7 @@ int main(int argc,char** argv) {
     CHECK(world); if(!world) return TEST_RESULT();
     physics::Scene scene(runtime);
     auto stats=world::buildCollision(scene,world->map());
+    world->attachPhysics(scene);
     CHECK(stats.brushes>100); CHECK(stats.rejected==0);
     auto feet=world->spawnPoint().origin; feet.z-=64;
     scene.spawnPlayer(feet); settle(scene,240);

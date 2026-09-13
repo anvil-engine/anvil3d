@@ -70,7 +70,7 @@ int main(int argc,char** argv) {
     render::DeviceOptions options;options.width=960;options.height=640;
     auto device=render::createDevice(options);CHECK(device);if(!device)return TEST_RESULT();
     auto level=world::World::load(fs,device.get(),"d1_trainstation_01");CHECK(level);if(!level)return TEST_RESULT();
-    physics::Scene scene(runtime);world::buildCollision(scene,level->map(),&fs);
+    physics::Scene scene(runtime);world::buildCollision(scene,level->map(),&fs);level->attachPhysics(scene);
     auto camera=level->spawnPoint();auto feet=camera.origin;feet.z-=64;scene.spawnPlayer(feet);
     gameplay::Combat combat;combat.reset(scene,camera);
     gameplay::CombatView view;CHECK(view.load(*level));

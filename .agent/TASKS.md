@@ -31,6 +31,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
   - [x] Start authored `logic_timer` entities from interval bounds (default 1), honor `StartDisabled`, dispatch `OnTimer`, and support `Enable`, `Disable`, and `FireTimer` with bounded catch-up, including `UseRandomTime`.
   - [x] Implement `trigger_once` and `trigger_multiple` player overlap against transformed BSP convex hulls, including authored `OnStartTouch`, `StartDisabled`, and `Enable`/`Disable` behavior.
   - [x] Implement bounded `logic_branch` and `math_counter` state, authored comparisons/limits, and output dispatch for common inputs.
+  - [x] Implement generic linear `func_door` movement with authored Jolt hull synchronization, Open/Close/Toggle/Lock/Unlock/SetSpeed, wait timing, and lifecycle outputs.
   - [ ] Implement additional authored entity input handlers and entity behavior; remaining trigger classes and unsupported inputs remain visible warnings.
 - [ ] Original sound resources/scripts and audio playback.
 - [ ] PHY collision, entity physics/parenting, Source movement semantics, triggers and progression driven by map data.
@@ -69,7 +70,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
 2. [x] VTF -> render::TextureData (materials/texture) -> render::Texture: BC1-3 native when caps.textureCompressionBC, CPU decode otherwise; mip chains; sampler addressing from VTF flags. (DXT1/3/5, BGR(A)888x, RGBA16F, UV88); material -> texture binding.
 3. [x] World mesh builder: faces -> polygons, displacement grids, lightmap atlas; LightmappedGeneric basics; `map <name>`; free camera.
 3a. [x] WorldVertexTransition blend ($basetexture2 by displacement alpha). [ ] UnlitTwoTexture; translucent sorting.
-3b. [x] Brush entities (models *N) placed by entity origin/angles (static). [x] 2D sky. [ ] sky_camera 3D skybox. [ ] render targets (_rt_camera).
+3b. [x] Brush entities (models *N) placed by entity origin/angles (static). [x] Linear `func_door` movement with synced kinematic collision. [x] 2D sky. [ ] sky_camera 3D skybox. [ ] render targets (_rt_camera).
 4. [x] Static props via studio loader (ambient-only lighting). [ ] Prop lighting: direct light / VHV per-vertex lighting; LODs.
 5. [x] PVS/frustum culling (per face; no areaportals, no occlusion).
 6. [ ] Lightmap styles / bumped lightmaps; HDR lighting lump path with tonemapping.
