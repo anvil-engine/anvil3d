@@ -450,6 +450,25 @@ int main(int argc, char** argv) {
       R"({ "classname" "scripted_sequence" "m_iszEntity" "npc" })")[0]));
     CHECK(!world::scriptedSequenceConfig(bsp::parseEntities(
       R"({ "classname" "scripted_sequence" "target" "prop" "sequence" "idle" "delay" "nan" })")[0]));
+    const auto fade = world::envFadeConfig(bsp::parseEntities(
+      R"({ "classname" "env_fade" "duration" "2" "holdtime" "1" "rendercolor" "12 34 56" "renderamt" "128" })")[0]);
+    CHECK(fade && fade->color[0] == 12 && fade->color[1] == 34 && fade->color[2] == 56 &&
+          fade->alpha == 128 && near(fade->duration, 2) && near(fade->hold, 1) && !fade->fadeFrom && !fade->stayOut);
+    if (fade) {
+      CHECK(near(world::envFadeOpacity(*fade, 0, false), 0));
+      CHECK(near(world::envFadeOpacity(*fade, 1, false), 0.5f));
+      CHECK(near(world::envFadeOpacity(*fade, 2.5, false), 1));
+      CHECK(near(world::envFadeOpacity(*fade, 4, false), 0.5f));
+      CHECK(near(world::envFadeOpacity(*fade, 5, false), 0));
+      CHECK(near(world::envFadeOpacity(*fade, 1, true), 0.5f));
+    }
+    const auto stayFade = world::envFadeConfig(bsp::parseEntities(
+      R"({ "classname" "env_fade" "duration" "0" "spawnflags" "9" })")[0]);
+    CHECK(stayFade && stayFade->fadeFrom && stayFade->stayOut && near(world::envFadeOpacity(*stayFade, 100, false), 1));
+    CHECK(!world::envFadeConfig(bsp::parseEntities(
+      R"({ "classname" "env_fade" "duration" "nan" })")[0]));
+    CHECK(!world::envFadeConfig(bsp::parseEntities(
+      R"({ "classname" "env_fade" "rendercolor" "256 0 0" })")[0]));
     CHECK(world::normalizeMapName("d1_trainstation_02") == "d1_trainstation_02");
     CHECK(world::normalizeMapName(" maps\\D1_trainstation_02.bsp ") == "d1_trainstation_02");
     CHECK(!world::normalizeMapName("../outside"));

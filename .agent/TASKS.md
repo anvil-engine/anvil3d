@@ -36,6 +36,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
   - [x] Implement generic `func_tracktrain` movement over linked `path_track` entities, with authored speed/height/orientation flags, I/O, and synced kinematic collision.
   - [x] Implement generic `func_button` movement and authored `OnPressed` dispatch with synced kinematic collision.
   - [x] Implement generic `func_breakable` health, `TakeDamage`/`Break`, enable state, and `OnBreak` dispatch with synced collision.
+  - [x] Implement generic `env_fade` authored color/alpha, duration/hold timing, `Fade`/`FadeReverse`/`Hold`, and lifecycle outputs.
   - [x] Implement generic `trigger_changelevel` player overlap, validated `map`/`mapname`, and one-shot map transition through the engine console.
   - [x] Bridge authored `scripted_sequence` delay/repeat and Begin/Cancel lifecycle to loaded `prop_dynamic` animations; NPC/AI execution remains unsupported.
   - [ ] Implement additional authored entity input handlers and entity behavior; remaining trigger classes and unsupported inputs remain visible warnings.

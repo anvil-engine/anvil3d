@@ -205,6 +205,55 @@ std::optional<ScriptedSequenceConfig> scriptedSequenceConfig(const bsp::Entity& 
   return out;
 }
 
+std::optional<EnvFadeConfig> envFadeConfig(const bsp::Entity& entity) {
+  EnvFadeConfig out;
+  auto number = [&](std::string_view key, float& value) {
+    const std::string_view text = entity.get(key);
+    if (text.empty()) return true;
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+    return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() &&
+           std::isfinite(value) && value >= 0;
+  };
+  if (!number("duration", out.duration) || !number("holdtime", out.hold)) return std::nullopt;
+
+  const std::string color(entity.get("rendercolor"));
+  if (!color.empty()) {
+    int r = 0, g = 0, b = 0;
+    char extra = 0;
+    if (std::sscanf(color.c_str(), " %d %d %d %c", &r, &g, &b, &extra) != 3 ||
+        r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255)
+      return std::nullopt;
+    out.color = {uint8_t(r), uint8_t(g), uint8_t(b)};
+  }
+  const std::string_view alpha = entity.get("renderamt");
+  if (!alpha.empty()) {
+    int value = 0;
+    const auto parsed = std::from_chars(alpha.data(), alpha.data() + alpha.size(), value);
+    if (parsed.ec != std::errc{} || parsed.ptr != alpha.data() + alpha.size() || value < 0 || value > 255)
+      return std::nullopt;
+    out.alpha = uint8_t(value);
+  }
+  int flags = 0;
+  const std::string_view spawnflags = entity.get("spawnflags");
+  if (!spawnflags.empty()) {
+    const auto parsed = std::from_chars(spawnflags.data(), spawnflags.data() + spawnflags.size(), flags);
+    if (parsed.ec != std::errc{} || parsed.ptr != spawnflags.data() + spawnflags.size()) return std::nullopt;
+  }
+  out.fadeFrom = (flags & 1) != 0;
+  out.stayOut = (flags & 8) != 0;
+  return out;
+}
+
+float envFadeOpacity(const EnvFadeConfig& config, double elapsed, bool reverse) {
+  if (!std::isfinite(elapsed) || elapsed < 0) return reverse ? 1.0f : 0.0f;
+  const double duration = config.duration;
+  if (reverse) return duration <= 0 ? 0.0f : float(std::clamp(1.0 - elapsed / duration, 0.0, 1.0));
+  if (duration > 0 && elapsed < duration) return float(elapsed / duration);
+  if (config.stayOut || elapsed < duration + config.hold) return 1.0f;
+  if (duration <= 0) return 0.0f;
+  return float(std::clamp(1.0 - (elapsed - duration - config.hold) / duration, 0.0, 1.0));
+}
+
 std::optional<size_t> findPathTrack(const std::vector<bsp::Entity>& entities, std::string_view name) {
   if (name.empty() || name.size() > 1024) return std::nullopt;
   for (size_t i = 0; i < entities.size(); ++i)

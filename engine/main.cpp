@@ -524,6 +524,7 @@ int main(int argc, char** argv) {
       if (diagnosticPlay) device->draw2d(gameplay::interfaceBatch(menu,combat,camera,pw,ph,level != nullptr));
       if (!vguiDiagnosticBatch.indices.empty()) device->draw2d(vguiDiagnosticBatch);
       for (const auto& text:vguiDiagnosticText) device->draw2d(text);
+      if (level) device->draw2d(level->fadeOverlay(pw, ph));
       if (devuiOn && lw) devui::frame(float(lw), float(lh), float(pw) / float(lw), float(dt));
       device->endFrame();
     }

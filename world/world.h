@@ -62,6 +62,8 @@ public:
   // Fires supported trigger behavior when the player's real Jolt shape enters an authored BSP hull.
   void checkTriggers(const physics::Scene& scene);
   void updateAudio(const Camera& listener);
+  // Full-screen authored env_fade overlay, drawn after world and game UI. Empty when transparent.
+  render::Batch2D fadeOverlay(uint32_t width, uint32_t height) const;
   // Returns a trigger_changelevel request once, then clears it.
   std::optional<std::string> takePendingLevelChange();
   const DrawStats& stats() const { return stats_; } // of the last draw()
@@ -95,6 +97,7 @@ private:
   void setupTrackTrains();
   void setupAmbientSounds();
   void setupScriptedSequences();
+  void setupFades();
   void playAmbient(size_t ambient);
   void stopAmbient(size_t ambient);
   void startIo();
@@ -188,6 +191,14 @@ private:
     bool active = false;
   };
   std::vector<ScriptedSequence> scriptedSequences_;
+  struct FadeEffect {
+    size_t entity = 0;
+    EnvFadeConfig config;
+  };
+  std::vector<FadeEffect> fades_;
+  const FadeEffect* activeFade_ = nullptr;
+  double fadeStart_ = 0;
+  bool fadeReverse_ = false, fadeHeld_ = false, fadeCompleteFired_ = false;
   // Parallel to Mesh::batches: the batch's whole index range with its material; faces [firstFace, +faceCount).
   struct Material {
     render::Draw3D draw;

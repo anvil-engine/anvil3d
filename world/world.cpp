@@ -204,6 +204,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   w->setupTriggers();
   w->io_ = std::make_unique<EntityIo>(w->entityLump_);
   w->setupScriptedSequences();
+  w->setupFades();
   w->setupAmbientSounds();
   w->startIo();
   std::string ioError;
@@ -1010,6 +1011,33 @@ void World::setupAmbientSounds() {
   }
 }
 
+void World::setupFades() {
+  for (size_t i = 0; i < entityLump_.size(); ++i) {
+    if (!iequals(entityLump_[i].get("classname"), "env_fade")) continue;
+    const auto config = envFadeConfig(entityLump_[i]);
+    if (!config) {
+      ANVIL_WARN("entity", "env_fade %zu has invalid duration/hold/color/alpha", i);
+      continue;
+    }
+    fades_.push_back({i, *config});
+  }
+}
+
+render::Batch2D World::fadeOverlay(uint32_t width, uint32_t height) const {
+  render::Batch2D batch;
+  if (!activeFade_ || !width || !height) return batch;
+  const float opacity = fadeHeld_ ? 1.0f : envFadeOpacity(activeFade_->config, ioTime_ - fadeStart_, fadeReverse_);
+  const uint8_t alpha = uint8_t(std::clamp(opacity * activeFade_->config.alpha, 0.0f, 255.0f));
+  if (!alpha) return batch;
+  const auto& c = activeFade_->config.color;
+  const uint32_t color = uint32_t(c[0]) | (uint32_t(c[1]) << 8) | (uint32_t(c[2]) << 16) | (uint32_t(alpha) << 24);
+  batch.vertices = {{0, 0, 0, 0, color}, {float(width), 0, 0, 0, color},
+                    {float(width), float(height), 0, 0, color}, {0, float(height), 0, 0, color}};
+  batch.indices = {0, 1, 2, 0, 2, 3};
+  batch.cmds.push_back({0, {0, 0, int32_t(width), int32_t(height)}, 0, 6, 0});
+  return batch;
+}
+
 void World::playAmbient(size_t index) {
   if (!audio_ || index >= ambientSounds_.size()) return;
   AmbientSound& sound = ambientSounds_[index];
@@ -1052,7 +1080,23 @@ void World::deliverInput(const InputDelivery& delivery) {
   const bool trigger = iequals(entity.get("classname"), "trigger_once") ||
                        iequals(entity.get("classname"), "trigger_multiple") ||
                        iequals(entity.get("classname"), "trigger_changelevel");
-  if (iequals(entity.get("classname"), "scripted_sequence")) {
+  if (iequals(entity.get("classname"), "env_fade")) {
+    const auto fade = std::find_if(fades_.begin(), fades_.end(),
+                                   [&](const FadeEffect& item) { return item.entity == delivery.target; });
+    if (fade == fades_.end()) warnOnce("env_fade has invalid authored properties");
+    else if (iequals(delivery.input, "Fade") || iequals(delivery.input, "FadeReverse") ||
+             iequals(delivery.input, "Hold")) {
+      activeFade_ = &*fade;
+      fadeStart_ = ioTime_;
+      fadeReverse_ = fade->config.fadeFrom != iequals(delivery.input, "FadeReverse");
+      fadeHeld_ = iequals(delivery.input, "Hold");
+      fadeCompleteFired_ = fadeHeld_;
+      std::string error;
+      if (!io_->fire(fade->entity, "OnBeginFade", ioTime_,
+                     [this](const InputDelivery& next) { deliverInput(next); }, &error))
+        ANVIL_WARN("entity", "env_fade %zu OnBeginFade: %s", fade->entity, error.c_str());
+    } else warnOnce("Unsupported entity input env_fade." + delivery.input);
+  } else if (iequals(entity.get("classname"), "scripted_sequence")) {
     auto sequence = std::find_if(scriptedSequences_.begin(), scriptedSequences_.end(),
                                  [&](const ScriptedSequence& item) { return item.entity == delivery.target; });
     if (iequals(delivery.input, "BeginSequence")) beginScriptedSequence(delivery.target);
@@ -1233,6 +1277,20 @@ void World::tick(float dt, physics::Scene* scene) {
   if (!io_->tick(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); }, &error))
     ANVIL_WARN("entity", "logic_timer: %s", error.c_str());
   io_->dispatch(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); });
+  if (activeFade_ && !fadeHeld_ && !fadeCompleteFired_) {
+    const double elapsed = ioTime_ - fadeStart_;
+    const double completeAt = fadeReverse_ ? activeFade_->config.duration
+                                           : activeFade_->config.stayOut ? activeFade_->config.duration
+                                                                         : activeFade_->config.duration * 2 + activeFade_->config.hold;
+    if (elapsed >= completeAt) {
+      fadeCompleteFired_ = true;
+      std::string fadeError;
+      if (!io_->fire(activeFade_->entity, "OnFadeComplete", ioTime_,
+                     [this](const InputDelivery& next) { deliverInput(next); }, &fadeError))
+        ANVIL_WARN("entity", "env_fade %zu OnFadeComplete: %s", activeFade_->entity, fadeError.c_str());
+      if (fadeReverse_ || !activeFade_->config.stayOut) activeFade_ = nullptr;
+    }
+  }
   for (ScriptedSequence& sequence : scriptedSequences_) {
     if (!sequence.active && sequence.beginAt >= 0 && ioTime_ >= sequence.beginAt) {
       sequence.beginAt = -1;

@@ -4,6 +4,7 @@
 #include "render/render.h"
 
 #include <cstdint>
+#include <array>
 #include <optional>
 #include <string>
 #include <vector>
@@ -61,6 +62,14 @@ struct ScriptedSequenceConfig {
   bool interruptible = true;
 };
 
+struct EnvFadeConfig {
+  std::array<uint8_t, 3> color{0, 0, 0};
+  uint8_t alpha = 255;
+  float duration = 2;
+  float hold = 0;
+  bool fadeFrom = false, stayOut = false;
+};
+
 // Interprets func_door movedir/lip against the authored local brush bounds.
 std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bsp::Vec3& mins,
                                              const bsp::Vec3& maxs);
@@ -77,6 +86,11 @@ bool applyBreakableDamage(float& health, bool damageable, float damage);
 
 // Reads the small authored subset that can drive an existing prop_dynamic without pretending to provide NPC AI.
 std::optional<ScriptedSequenceConfig> scriptedSequenceConfig(const bsp::Entity& entity);
+
+// Reads authored env_fade timing/color. Invalid or non-finite values are rejected.
+std::optional<EnvFadeConfig> envFadeConfig(const bsp::Entity& entity);
+// Evaluates the authored fade curve. A normal fade goes in, holds, then goes out unless stayOut is set.
+float envFadeOpacity(const EnvFadeConfig& config, double elapsed, bool reverse);
 
 // Resolves a Source entity targetname to a path_track. Name matching is ASCII case-insensitive.
 std::optional<size_t> findPathTrack(const std::vector<bsp::Entity>& entities, std::string_view name);
