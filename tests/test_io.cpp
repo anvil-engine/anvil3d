@@ -73,7 +73,11 @@ int main() {
   CHECK(timerIo.input(1, "Enable", 12.6, receive, &error));
   CHECK(timerIo.tick(12.85, receive, &error) && delivered.size() == 4);
   CHECK(delivered.back().input == "DisabledTick");
-  CHECK(!timerIo.input(0, "ResetTimer", 13, receive, &error) && !error.empty());
+  CHECK(timerIo.input(1, "Disable", 12.9, receive, &error));
+  CHECK(timerIo.input(0, "ResetTimer", 13, receive, &error));
+  CHECK(timerIo.tick(13.49, receive, &error) && delivered.size() == 4);
+  CHECK(timerIo.input(0, "Toggle", 13.5, receive, &error) && !timerIo.enabled(0));
+  CHECK(timerIo.input(0, "Toggle", 13.6, receive, &error) && timerIo.enabled(0));
 
   std::vector<bsp::Entity> fastTimer = {
       {{{"classname", "logic_timer"}, {"RefireTime", "0.001"}, {"OnTimer", "sink,Tick,,0,-1"}}},

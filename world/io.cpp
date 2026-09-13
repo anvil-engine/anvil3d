@@ -230,8 +230,14 @@ bool EntityIo::input(size_t entity, std::string_view inputName, std::string_view
   } else if (isTimer(entity) && equalInsensitive(inputName, "Disable")) {
     enabled_[entity] = false;
     nextTimer_[entity].reset();
+  } else if (isTimer(entity) && equalInsensitive(inputName, "Toggle")) {
+    enabled_[entity] = !enabled_[entity];
+    if (enabled_[entity] && started_) nextTimer_[entity] = now + timerInterval(entity);
+    else if (!enabled_[entity]) nextTimer_[entity].reset();
   } else if (isTimer(entity) && equalInsensitive(inputName, "FireTimer")) {
     return fire(entity, "OnTimer", now, callback, error);
+  } else if (isTimer(entity) && equalInsensitive(inputName, "ResetTimer")) {
+    if (enabled_[entity] && started_) nextTimer_[entity] = now + timerInterval(entity);
   } else if (isClass(entities_[entity], "logic_branch")) {
     if (!valuesValid_[entity]) {
       fail(error, "logic_branch InitialValue must be a finite number");
