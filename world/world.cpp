@@ -488,18 +488,41 @@ void World::setupProps() {
 void World::setupDynamicProps() {
   for (size_t i = 0; i < entityLump_.size(); ++i) {
     const auto& entity = entityLump_[i];
-    if (!iequals(entity.get("classname"), "prop_dynamic")) continue;
+    const std::string_view classname = entity.get("classname");
+    const bool prop = iequals(classname, "prop_dynamic");
+    const bool npc = supportedVisualNpcClass(classname);
+    if (!prop && !npc) {
+      if (classname.starts_with("npc_") && entity.get("model").ends_with(".mdl"))
+        warnOnce("Unsupported NPC visual classname " + std::string(classname));
+      continue;
+    }
     const auto path = entity.get("model");
     if (path.empty() || !path.ends_with(".mdl")) {
-      ANVIL_WARN("entity", "prop_dynamic %zu has no MDL model", i);
+      if (prop) ANVIL_WARN("entity", "prop_dynamic %zu has no MDL model", i);
+      else warnOnce(std::string(classname) + " visual requires an authored MDL model; class defaults are unsupported");
       continue;
     }
     const uint32_t model = loadModelAsset(path, true);
     if (!model) {
-      ANVIL_WARN("entity", "prop_dynamic %zu model unavailable: %.*s", i, int(path.size()), path.data());
+      ANVIL_WARN("entity", "%.*s %zu model unavailable: %.*s", int(classname.size()), classname.data(), i,
+                 int(path.size()), path.data());
       continue;
     }
-    dynamicProps_.push_back({i, model, entityTransform(entity), std::string(path), std::string(entity.get("DefaultAnim")), 0});
+    std::string sequence(entity.get("DefaultAnim"));
+    if (npc) {
+      if (sequence.empty()) {
+        const auto& sequences = modelAssets_[model - 1].studio.sequences;
+        const auto idle = std::find_if(sequences.begin(), sequences.end(), [](const auto& item) {
+          return iequals(item.activityName, "ACT_IDLE") || iequals(item.name, "idle") ||
+                 lower(item.name).starts_with("idle");
+        });
+        if (idle != sequences.end() && !idle->animations.empty()) sequence = idle->name;
+        else warnOnce(std::string(classname) + " " + std::string(path) + " has no idle sequence");
+      }
+      warnOnce("PARTIAL: " + std::string(classname) + " renders authored visuals only; AI and combat are unsupported");
+      ++npcVisuals_;
+    }
+    dynamicProps_.push_back({i, model, entityTransform(entity), std::string(path), std::move(sequence), 0, npc});
   }
 }
 
@@ -527,7 +550,8 @@ void World::beginScriptedSequence(size_t entity) {
     warnOnce("scripted_sequence " + std::to_string(entity) + " target not found: " + sequence->config.target);
     return;
   }
-  if (!iequals(entityLump_[target].get("classname"), "prop_dynamic")) {
+  if (!iequals(entityLump_[target].get("classname"), "prop_dynamic") &&
+      !supportedVisualNpcClass(entityLump_[target].get("classname"))) {
     warnOnce("Unsupported scripted_sequence NPC/AI target " + std::string(entityLump_[target].get("classname")) +
              ": " + sequence->config.target);
     return;
@@ -1233,14 +1257,18 @@ void World::deliverInput(const InputDelivery& delivery) {
     io_->setEnabled(delivery.target, true);
   } else if (trigger && iequals(delivery.input, "Disable")) {
     io_->setEnabled(delivery.target, false);
-  } else if (iequals(entity.get("classname"), "prop_dynamic") && iequals(delivery.input, "Enable")) {
+  } else if ((iequals(entity.get("classname"), "prop_dynamic") || supportedVisualNpcClass(entity.get("classname"))) &&
+             iequals(delivery.input, "Enable")) {
     io_->setEnabled(delivery.target, true);
-  } else if (iequals(entity.get("classname"), "prop_dynamic") && iequals(delivery.input, "Disable")) {
+  } else if ((iequals(entity.get("classname"), "prop_dynamic") || supportedVisualNpcClass(entity.get("classname"))) &&
+             iequals(delivery.input, "Disable")) {
     io_->setEnabled(delivery.target, false);
-  } else if (iequals(entity.get("classname"), "prop_dynamic") && iequals(delivery.input, "SetAnimation")) {
+  } else if ((iequals(entity.get("classname"), "prop_dynamic") || supportedVisualNpcClass(entity.get("classname"))) &&
+             iequals(delivery.input, "SetAnimation")) {
     const auto prop = std::find_if(dynamicProps_.begin(), dynamicProps_.end(), [&](const auto& item) { return item.entity == delivery.target; });
-    if (prop == dynamicProps_.end()) warnOnce("prop_dynamic has no loaded model");
-    else if (delivery.parameter.empty()) warnOnce("prop_dynamic " + std::to_string(delivery.target) + " SetAnimation has no sequence");
+    if (prop == dynamicProps_.end()) warnOnce(std::string(entity.get("classname")) + " has no loaded model");
+    else if (delivery.parameter.empty()) warnOnce(std::string(entity.get("classname")) + " " +
+                                                   std::to_string(delivery.target) + " SetAnimation has no sequence");
     else {
       prop->sequence = delivery.parameter;
       prop->animationStart = ioTime_;
@@ -1493,7 +1521,8 @@ void World::draw(const Camera& camera, float aspect, bool usePvs) {
     if (!prop.sequence.empty()) {
       std::string error;
       if (!animateModel(prop.model, prop.sequence, ioTime_ - prop.animationStart, &error))
-        warnOnce("prop_dynamic " + std::to_string(prop.entity) + " " + prop.modelPath + " animation " + prop.sequence + ": " + error);
+        warnOnce(std::string(prop.npc ? entityLump_[prop.entity].get("classname") : "prop_dynamic") + " " +
+                 std::to_string(prop.entity) + " " + prop.modelPath + " animation " + prop.sequence + ": " + error);
     }
     drawModel(prop.model, viewProj * prop.transform.matrix());
   }

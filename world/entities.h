@@ -84,6 +84,9 @@ std::optional<BreakableConfig> breakableConfig(const bsp::Entity& entity);
 // Applies valid damage and reports whether health reached zero.
 bool applyBreakableDamage(float& health, bool damageable, float damage);
 
+// NPC classes whose explicitly authored studio model can be shown safely without implying AI support.
+bool supportedVisualNpcClass(std::string_view classname);
+
 // Reads the small authored subset that can drive an existing prop_dynamic without pretending to provide NPC AI.
 std::optional<ScriptedSequenceConfig> scriptedSequenceConfig(const bsp::Entity& entity);
 

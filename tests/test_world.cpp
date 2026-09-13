@@ -182,7 +182,7 @@ int realData(const std::filesystem::path& modDir) {
   if (!info) return TEST_RESULT();
   mountGameInfo(fsys, *info);
 
-  size_t maps = 0, missing = 0;
+  size_t maps = 0, missing = 0, npcVisuals = 0;
   for (const auto& entry : std::filesystem::directory_iterator(modDir / "maps")) {
     if (entry.path().extension() != ".bsp") continue;
     if (entry.file_size() == 0) { // broken install, not a loader problem
@@ -191,10 +191,15 @@ int realData(const std::filesystem::path& modDir) {
     }
     const auto w = world::World::load(fsys, nullptr, entry.path().stem().string());
     CHECK(w != nullptr);
-    if (w) missing += w->missingAssets();
+    if (w) {
+      missing += w->missingAssets();
+      npcVisuals += w->npcVisualCount();
+    }
     ++maps;
   }
-  std::printf("%zu maps loaded (CPU), %zu missing materials/textures\n", maps, missing);
+  std::printf("%zu maps loaded (CPU), %zu missing materials/textures, %zu authored NPC visuals\n",
+              maps, missing, npcVisuals);
+  CHECK(npcVisuals > 0);
 
   render::DeviceOptions options;
   options.width = 1280;
@@ -439,6 +444,10 @@ int main(int argc, char** argv) {
     CHECK(!world::applyBreakableDamage(breakableHealth, true, -1) && near(breakableHealth, 25));
     CHECK(!world::breakableConfig(bsp::parseEntities(R"({ "classname" "func_breakable" "health" "nan" })")[0]));
     CHECK(!world::breakableConfig(bsp::parseEntities(R"({ "classname" "func_breakable" "material" "99" })")[0]));
+    CHECK(world::supportedVisualNpcClass("npc_citizen"));
+    CHECK(world::supportedVisualNpcClass("NPC_METROPOLICE"));
+    CHECK(!world::supportedVisualNpcClass("npc_cscanner"));
+    CHECK(!world::supportedVisualNpcClass("prop_dynamic"));
     const auto scripted = world::scriptedSequenceConfig(bsp::parseEntities(
       R"({ "classname" "scripted_sequence" "m_iszEntity" "citizen" "m_iszPlay" "wave" "delay" "0.5" "m_flRepeat" "2" "spawnflags" "4" })")[0]);
     CHECK(scripted && scripted->target == "citizen" && scripted->animation == "wave" &&

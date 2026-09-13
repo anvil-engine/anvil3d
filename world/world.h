@@ -73,6 +73,7 @@ public:
   const std::string& skyName() const { return skyName_; } // worldspawn skyname as resolved ("" = no sky)
   size_t brushEntityCount() const { return entities_.size(); } // with drawable faces
   size_t staticPropCount() const { return props_.size(); }     // with drawable meshes
+  size_t npcVisualCount() const { return npcVisuals_; }
   // World-owned model resources, reused by independent gameplay objects and first-person weapons.
   // 0 = failed load; handles expire with the World. Bounds refer to the model's bind pose.
   uint32_t loadModel(std::string_view name);
@@ -182,8 +183,10 @@ private:
     std::string modelPath;
     std::string sequence;
     double animationStart = 0;
+    bool npc = false;
   };
   std::vector<DynamicProp> dynamicProps_;
+  size_t npcVisuals_ = 0;
   struct ScriptedSequence {
     size_t entity = 0;
     ScriptedSequenceConfig config;

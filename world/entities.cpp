@@ -176,6 +176,15 @@ bool applyBreakableDamage(float& health, bool damageable, float damage) {
   return health <= 0;
 }
 
+bool supportedVisualNpcClass(std::string_view classname) {
+  static constexpr std::string_view kClasses[] = {
+    "npc_alyx", "npc_barney", "npc_breen", "npc_citizen", "npc_combine_s", "npc_eli",
+    "npc_kleiner", "npc_metropolice", "npc_monk", "npc_mossman", "npc_vortigaunt",
+  };
+  return std::any_of(std::begin(kClasses), std::end(kClasses),
+                     [&](std::string_view candidate) { return iequals(classname, candidate); });
+}
+
 std::optional<ScriptedSequenceConfig> scriptedSequenceConfig(const bsp::Entity& entity) {
   ScriptedSequenceConfig out;
   out.target = entity.get("m_iszEntity");
