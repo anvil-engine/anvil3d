@@ -46,7 +46,8 @@ std::optional<std::string> resolveSoundScript(const FileSystem& fs, std::string_
   if (!root) return std::nullopt;
   std::vector<std::string> scripts;
   std::function<void(const KeyValues&)> collect = [&](const KeyValues& node) {
-    if (iequals(node.key, "file") && !node.value.empty()) scripts.push_back(node.value);
+    if ((iequals(node.key, "file") || iequals(node.key, "precache_file")) && !node.value.empty())
+      scripts.push_back(node.value);
     for (const auto& child : node.children) collect(child);
   };
   collect(*root);
