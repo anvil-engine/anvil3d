@@ -1,7 +1,10 @@
 #include "world/worldmesh.h"
 
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <cfloat>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <numeric>
@@ -17,7 +20,7 @@ constexpr size_t kWhite = SIZE_MAX; // Block::face of the shared white block
 
 struct Block {
   size_t face; // index into map.faces, or kWhite
-  uint32_t w, h, styles = 0;
+  uint32_t w, h, styles = 0, samplesPerStyle = 1;
   uint32_t x = 0, y = 0;
 };
 
@@ -25,6 +28,26 @@ float project(const bsp::Vec3& p, const float v[4]) { return p.x * v[0] + p.y * 
 
 bsp::Vec3 lerp(const bsp::Vec3& a, const bsp::Vec3& b, float t) {
   return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t};
+}
+
+std::array<float, 64> initialLightStyles(const bsp::Map& map) {
+  std::array<float, 64> values;
+  values.fill(1.0f);
+  for (const bsp::Entity& entity : bsp::parseEntities(map.entities)) {
+    const std::string_view classname = entity.get("classname");
+    if (classname != "light" && classname != "light_spot" && classname != "light_glspot") continue;
+    const std::string_view text = entity.get("style");
+    int style = 0;
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), style);
+    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size() || style < 32 || style >= int(values.size())) continue;
+    int spawnflags = 0;
+    const std::string_view flags = entity.get("spawnflags");
+    std::from_chars(flags.data(), flags.data() + flags.size(), spawnflags);
+    const std::string_view pattern = entity.get("pattern");
+    const char first = pattern.empty() ? 'm' : char(std::tolower(static_cast<unsigned char>(pattern.front())));
+    values[size_t(style)] = (spawnflags & 1) ? 0.0f : std::clamp(float(first - 'a') / 12.0f, 0.0f, 25.0f / 12.0f);
+  }
+  return values;
 }
 
 } // namespace
@@ -71,13 +94,14 @@ Mesh buildMesh(const bsp::Map& map) {
     const int64_t w = int64_t(f.lightmapSize[0]) + 1, h = int64_t(f.lightmapSize[1]) + 1;
     uint32_t styles = 1;
     while (styles < 4 && f.styles[styles] != 255) ++styles;
+    const uint32_t samplesPerStyle = (map.texinfos[size_t(f.texinfo)].flags & bsp::SURF_BUMPLIGHT) ? 4 : 1;
     if (w < 1 || h < 1 || w > kMaxLuxels || h > kMaxLuxels ||
-        uint64_t(f.lightofs) + uint64_t(w * h * 4 * styles) > map.lighting.size()) {
+        uint64_t(f.lightofs) + uint64_t(w * h * 4 * styles * samplesPerStyle) > map.lighting.size()) {
       ++out.badLightmaps;
       continue;
     }
     blockOf[k] = blocks.size();
-    blocks.push_back({faces[k], uint32_t(w), uint32_t(h), styles});
+    blocks.push_back({faces[k], uint32_t(w), uint32_t(h), styles, samplesPerStyle});
   }
 
   // ponytail: one shelf-packed atlas; split into pages if a map ever exceeds maxTextureSize.
@@ -111,6 +135,7 @@ Mesh buildMesh(const bsp::Map& map) {
   atlas.desc.height = atlasH;
   atlas.pixels.assign(size_t(atlasW) * atlasH * 4, 0);
   const auto* lighting = reinterpret_cast<const uint8_t*>(map.lighting.data());
+  const auto lightStyles = initialLightStyles(map);
   for (const Block& b : blocks)
     for (uint32_t ly = 0; ly < b.h; ++ly)
       for (uint32_t lx = 0; lx < b.w; ++lx) {
@@ -120,9 +145,11 @@ Mesh buildMesh(const bsp::Map& map) {
           float rgb[3]{};
           const size_t luxel = size_t(ly) * b.w + lx;
           for (uint32_t style = 0; style < b.styles; ++style) {
-            const uint8_t* src = lighting + map.faces[b.face].lightofs + (luxel + size_t(style) * b.w * b.h) * 4;
+            const bsp::Face& face = map.faces[b.face];
+            const uint8_t* src = lighting + face.lightofs + (luxel + size_t(style) * b.samplesPerStyle * b.w * b.h) * 4;
             const float scale = std::ldexp(1.0f / 255.0f, int8_t(src[3]));
-            for (int channel = 0; channel < 3; ++channel) rgb[channel] += float(src[channel]) * scale;
+            const float weight = face.styles[style] < lightStyles.size() ? lightStyles[face.styles[style]] : 1.0f;
+            for (int channel = 0; channel < 3; ++channel) rgb[channel] += float(src[channel]) * scale * weight;
           }
           for (int channel = 0; channel < 3; ++channel)
             dst[channel] = uint8_t(std::min(std::pow(rgb[channel], 1.0f / 2.2f) * 0.5f, 1.0f) * 255.0f + 0.5f);

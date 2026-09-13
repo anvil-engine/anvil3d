@@ -40,7 +40,7 @@ bsp::Map syntheticMap() {
   quad.numedges = 4;
   quad.dispinfo = -1;
   quad.lightmapSize[0] = quad.lightmapSize[1] = 4;
-  quad.styles[1] = 1;
+  quad.styles[1] = 32;
   quad.styles[2] = 255;
   bsp::Face hidden = quad, grid = quad, badLight = quad;
   hidden.texinfo = 1;
@@ -53,8 +53,9 @@ bsp::Map syntheticMap() {
 
   // Style 0: 25 samples of (255,255,255, exp 0); sample 0 exponent -1, sample 24 exponent +1.
   for (int i = 0; i < 25; ++i) m.lighting += std::string("\xFF\xFF\xFF", 3) + char(i == 0 ? -1 : i == 24 ? 1 : 0);
-  // Style 1: half-intensity samples, combined into the same atlas block.
+  // Style 32: half-intensity samples, combined while its light entity starts on.
   for (int i = 0; i < 25; ++i) m.lighting += std::string("\xFF\xFF\xFF", 3) + char(-1);
+  m.entities = R"({ "classname" "light" "style" "32" "spawnflags" "0" })";
 
   bsp::DispInfo d{};
   d.startPosition = {64, 0, 0}; // corner 1: grid starts there
@@ -326,6 +327,13 @@ int main(int argc, char** argv) {
     CHECK(mesh.vertices[0].blend == 0);
   }
   CHECK(mesh.lightmap.pixels.size() == size_t(mesh.lightmap.desc.width) * mesh.lightmap.desc.height * 4);
+
+  // Switchable light styles whose entity starts off must not illuminate the initial lightmap.
+  bsp::Map darkStyle = syntheticMap();
+  darkStyle.entities = R"({ "classname" "light_spot" "style" "32" "spawnflags" "1" })";
+  const world::Mesh darkStyleMesh = world::buildMesh(darkStyle);
+  CHECK(atlasTexel(darkStyleMesh, darkStyleMesh.vertices[0].lu, darkStyleMesh.vertices[0].lv)[0] == 93);
+  CHECK(atlasTexel(darkStyleMesh, darkStyleMesh.vertices[2].lu, darkStyleMesh.vertices[2].lv)[0] == 175);
 
   // Camera: Source axes (x forward at yaw 0, y left, z up) -> clip space (x right, y up, reverse Z).
   auto clip = [](const world::Camera& c, bsp::Vec3 p, float out[4]) {

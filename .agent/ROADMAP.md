@@ -9,4 +9,8 @@
 - M5 Playable HL2 — player, input, physics (Jolt), entities, sound, VGUI, save/load
 - M6 Expansion — Portal 2, TF2, networking
 
+## Month target
+
+Deliver one honest, playable HL2 vertical slice from an original map spawn to its authored transition, using generic map entities and original assets. Priorities: generic movers and I/O; audio and map lighting; the minimum scripted/NPC behavior and `changelevel`; then deterministic end-to-end replay and an unsupported-feature audit. This target does not promise the full campaign or retail game DLL compatibility.
+
 0.10.0 done = M5 minimal: first map loads, renders, player moves, basic physics/audio/VGUI.

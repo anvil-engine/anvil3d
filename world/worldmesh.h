@@ -47,7 +47,7 @@ struct Mesh {
 
 // Faces of every model (world + brush models), minus sky/nodraw/tool surfaces, in one vertex/index set and one
 // lightmap atlas. Displacement faces become their grids.
-// Uses style 0 and the flat (non-bumped) sample set of each lightmap. Lightmap ranges are validated here:
+// Composites each face's flat lightmap styles at their entity-authored initial intensity. Lightmap ranges are validated here:
 // faces whose samples fall outside the lighting lump render unlit-white and are counted in badLightmaps.
 Mesh buildMesh(const bsp::Map& map);
 
