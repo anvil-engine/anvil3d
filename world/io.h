@@ -38,7 +38,10 @@ public:
   bool start(double now, std::string* error = nullptr);
   bool tick(double now, const Callback& callback, std::string* error = nullptr);
   bool input(size_t entity, std::string_view input, double now, const Callback& callback, std::string* error = nullptr);
-  bool fire(size_t source, std::string_view output, double now, const Callback& callback, std::string* error = nullptr);
+  bool input(size_t entity, std::string_view input, std::string_view parameter, double now,
+             const Callback& callback, std::string* error = nullptr);
+  bool fire(size_t source, std::string_view output, double now, const Callback& callback,
+            std::string* error = nullptr, std::string_view value = {});
   void dispatch(double now, const Callback& callback);
   bool isTimer(size_t entity) const;
   bool timerUsesRandomTime(size_t entity) const;
@@ -59,6 +62,9 @@ private:
   std::vector<double> timerIntervalMaxes_;
   std::vector<std::optional<double>> nextTimer_;
   std::vector<bool> timerRandom_;
+  std::vector<double> values_;
+  std::vector<std::optional<double>> minimums_, maximums_;
+  std::vector<bool> valuesValid_;
   std::mt19937 timerRng_;
   bool started_ = false;
 

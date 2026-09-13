@@ -90,5 +90,39 @@ int main() {
   world::EntityIo invalidTimer(timers);
   CHECK(!invalidTimer.start(0, &error) && !error.empty());
 
+  std::vector<bsp::Entity> logic = {
+      {{{"classname", "logic_branch"}, {"InitialValue", "0"}, {"OnTrue", "sink,True,,0,-1"},
+        {"OnFalse", "sink,False,,0,-1"}}},
+      {{{"classname", "math_counter"}, {"startvalue", "5"}, {"min", "0"}, {"max", "10"},
+        {"OnGetValue", "sink,Value,,0,-1"}, {"OnHitMin", "sink,Minimum,,0,-1"},
+        {"OnHitMax", "sink,Maximum,fixed,0,-1"}}},
+      {{{"targetname", "sink"}}},
+  };
+  world::EntityIo logicIo(logic);
+  delivered.clear();
+  CHECK(logicIo.input(0, "Test", "", 0, receive, &error));
+  CHECK(delivered.size() == 1 && delivered.back().input == "False");
+  CHECK(logicIo.input(0, "SetValue", "2", 0, receive, &error));
+  CHECK(logicIo.input(0, "Test", "", 0, receive, &error));
+  CHECK(delivered.back().input == "True");
+  CHECK(logicIo.input(0, "Toggle", "", 0, receive, &error));
+  CHECK(logicIo.input(0, "Test", "", 0, receive, &error));
+  CHECK(delivered.back().input == "False");
+  CHECK(!logicIo.input(0, "SetValue", "nan", 0, receive, &error) && !error.empty());
+
+  CHECK(logicIo.input(1, "GetValue", "", 0, receive, &error));
+  CHECK(delivered.back().input == "Value" && delivered.back().parameter == "5");
+  CHECK(logicIo.input(1, "Add", "8", 0, receive, &error));
+  CHECK(delivered.back().input == "Maximum" && delivered.back().parameter == "fixed");
+  CHECK(logicIo.input(1, "Subtract", "20", 0, receive, &error));
+  CHECK(delivered.back().input == "Minimum" && delivered.back().parameter == "0");
+  CHECK(logicIo.input(1, "SetValue", "6", 0, receive, &error));
+  CHECK(logicIo.input(1, "Multiply", "1.5", 0, receive, &error));
+  CHECK(logicIo.input(1, "Divide", "3", 0, receive, &error));
+  CHECK(logicIo.input(1, "GetValue", "", 0, receive, &error));
+  CHECK(delivered.back().parameter == "3");
+  CHECK(!logicIo.input(1, "Divide", "0", 0, receive, &error) && !error.empty());
+  CHECK(!logicIo.input(1, "Add", "inf", 0, receive, &error) && !error.empty());
+
   return TEST_RESULT();
 }

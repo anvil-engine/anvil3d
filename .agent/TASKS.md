@@ -30,6 +30,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
   - [x] Parse bounded target/input/parameter/delay/fire-count outputs, queue delayed deliveries, and dispatch `logic_auto` `OnMapSpawn` / `logic_relay` `Trigger`; honor `StartDisabled`, `Enable`, and `Disable`.
   - [x] Start authored `logic_timer` entities from interval bounds (default 1), honor `StartDisabled`, dispatch `OnTimer`, and support `Enable`, `Disable`, and `FireTimer` with bounded catch-up, including `UseRandomTime`.
   - [x] Implement `trigger_once` and `trigger_multiple` player overlap against transformed BSP convex hulls, including authored `OnStartTouch`, `StartDisabled`, and `Enable`/`Disable` behavior.
+  - [x] Implement bounded `logic_branch` and `math_counter` state, authored comparisons/limits, and output dispatch for common inputs.
   - [ ] Implement additional authored entity input handlers and entity behavior; remaining trigger classes and unsupported inputs remain visible warnings.
 - [ ] Original sound resources/scripts and audio playback.
 - [ ] PHY collision, entity physics/parenting, Source movement semantics, triggers and progression driven by map data.

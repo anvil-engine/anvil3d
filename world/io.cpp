@@ -18,6 +18,29 @@ void fail(std::string* error, std::string message) {
   if (error) *error = std::move(message);
 }
 
+bool parseNumber(std::string_view text, double& value) {
+  if (text.empty()) return false;
+  const char* end = text.data() + text.size();
+  const auto result = std::from_chars(text.data(), end, value);
+  return result.ec == std::errc{} && result.ptr == end && std::isfinite(value);
+}
+
+bool isClass(const bsp::Entity& entity, std::string_view name) {
+  return equalInsensitive(entity.get("classname"), name);
+}
+
+std::optional<std::string_view> authoredValue(const bsp::Entity& entity, std::string_view key) {
+  for (const auto& pair : entity.keys)
+    if (equalInsensitive(pair.first, key)) return pair.second;
+  return std::nullopt;
+}
+
+std::string numberText(double value) {
+  char buffer[64];
+  const auto result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+  return result.ec == std::errc{} ? std::string(buffer, result.ptr) : std::string{};
+}
+
 } // namespace
 
 std::optional<Output> parseOutput(std::string_view value, std::string* error) {
@@ -72,6 +95,10 @@ EntityIo::EntityIo(const std::vector<bsp::Entity>& entities) : entities_(entitie
   timerIntervalMaxes_.reserve(entities.size());
   nextTimer_.resize(entities.size());
   timerRandom_.reserve(entities.size());
+  values_.reserve(entities.size());
+  minimums_.reserve(entities.size());
+  maximums_.reserve(entities.size());
+  valuesValid_.reserve(entities.size());
   for (const bsp::Entity& entity : entities) {
     enabled_.push_back(!equalInsensitive(entity.get("StartDisabled"), "1"));
     remaining_.emplace_back(entity.keys.size(), -2);
@@ -95,6 +122,30 @@ EntityIo::EntityIo(const std::vector<bsp::Entity>& entities) : entities_(entitie
     }
     timerIntervalMaxes_.push_back(maximum);
     timerRandom_.push_back(random);
+
+    double value = 0;
+    bool valid = true;
+    if (const auto initial = authoredValue(entity, isClass(entity, "logic_branch") ? "InitialValue" : "startvalue"))
+      valid = parseNumber(*initial, value);
+    std::optional<double> minimum, maximumValue;
+    if (isClass(entity, "math_counter")) {
+      if (const auto text = authoredValue(entity, "min")) {
+        double parsed = 0;
+        valid = parseNumber(*text, parsed) && valid;
+        if (valid) minimum = parsed;
+      }
+      if (const auto text = authoredValue(entity, "max")) {
+        double parsed = 0;
+        const bool parsedOk = parseNumber(*text, parsed);
+        valid = parsedOk && valid;
+        if (parsedOk) maximumValue = parsed;
+      }
+      if (minimum && maximumValue && *minimum > *maximumValue) valid = false;
+    }
+    values_.push_back(value);
+    minimums_.push_back(minimum);
+    maximums_.push_back(maximumValue);
+    valuesValid_.push_back(valid);
   }
 }
 
@@ -154,22 +205,93 @@ bool EntityIo::tick(double now, const Callback& callback, std::string* error) {
 
 bool EntityIo::input(size_t entity, std::string_view inputName, double now, const Callback& callback,
                      std::string* error) {
-  if (!isTimer(entity) || !std::isfinite(now)) {
-    fail(error, !isTimer(entity) ? "entity is not logic_timer" : "logic_timer input time must be finite");
+  return input(entity, inputName, {}, now, callback, error);
+}
+
+bool EntityIo::input(size_t entity, std::string_view inputName, std::string_view parameter, double now,
+                     const Callback& callback, std::string* error) {
+  if (entity >= entities_.size() || !std::isfinite(now)) {
+    fail(error, entity >= entities_.size() ? "entity input target is out of range" : "entity input time must be finite");
     return false;
   }
-  if (equalInsensitive(inputName, "Enable")) {
+  if (isTimer(entity) && equalInsensitive(inputName, "Enable")) {
     if (!enabled_[entity]) {
       enabled_[entity] = true;
       if (started_) nextTimer_[entity] = now + timerInterval(entity);
     }
-  } else if (equalInsensitive(inputName, "Disable")) {
+  } else if (isTimer(entity) && equalInsensitive(inputName, "Disable")) {
     enabled_[entity] = false;
     nextTimer_[entity].reset();
-  } else if (equalInsensitive(inputName, "FireTimer")) {
+  } else if (isTimer(entity) && equalInsensitive(inputName, "FireTimer")) {
     return fire(entity, "OnTimer", now, callback, error);
+  } else if (isClass(entities_[entity], "logic_branch")) {
+    if (!valuesValid_[entity]) {
+      fail(error, "logic_branch InitialValue must be a finite number");
+      return false;
+    }
+    if (equalInsensitive(inputName, "SetValue")) {
+      double value = 0;
+      if (!parseNumber(parameter, value)) {
+        fail(error, "logic_branch SetValue requires a finite number");
+        return false;
+      }
+      values_[entity] = value != 0;
+    } else if (equalInsensitive(inputName, "Toggle")) {
+      values_[entity] = values_[entity] == 0;
+    } else if (equalInsensitive(inputName, "Test")) {
+      return fire(entity, values_[entity] != 0 ? "OnTrue" : "OnFalse", now, callback, error);
+    } else {
+      fail(error, "unsupported logic_branch input");
+      return false;
+    }
+  } else if (isClass(entities_[entity], "math_counter")) {
+    if (!valuesValid_[entity]) {
+      fail(error, "math_counter authored values must be finite and min must not exceed max");
+      return false;
+    }
+    if (equalInsensitive(inputName, "GetValue")) {
+      const std::string value = numberText(values_[entity]);
+      return fire(entity, "OnGetValue", now, callback, error, value);
+    }
+    double operand = 0;
+    if (!parseNumber(parameter, operand)) {
+      fail(error, "math_counter input requires a finite number");
+      return false;
+    }
+    double value = values_[entity];
+    if (equalInsensitive(inputName, "Add")) value += operand;
+    else if (equalInsensitive(inputName, "Subtract")) value -= operand;
+    else if (equalInsensitive(inputName, "SetValue")) value = operand;
+    else if (equalInsensitive(inputName, "Multiply")) value *= operand;
+    else if (equalInsensitive(inputName, "Divide")) {
+      if (operand == 0) {
+        fail(error, "math_counter cannot divide by zero");
+        return false;
+      }
+      value /= operand;
+    } else {
+      fail(error, "unsupported math_counter input");
+      return false;
+    }
+    if (!std::isfinite(value)) {
+      fail(error, "math_counter result is not finite");
+      return false;
+    }
+    values_[entity] = value;
+    std::string_view hit;
+    if (minimums_[entity] && values_[entity] <= *minimums_[entity]) {
+      values_[entity] = *minimums_[entity];
+      hit = "OnHitMin";
+    } else if (maximums_[entity] && values_[entity] >= *maximums_[entity]) {
+      values_[entity] = *maximums_[entity];
+      hit = "OnHitMax";
+    }
+    if (!hit.empty()) {
+      const std::string value = numberText(values_[entity]);
+      return fire(entity, hit, now, callback, error, value);
+    }
   } else {
-    fail(error, "unsupported logic_timer input");
+    fail(error, "unsupported entity input");
     return false;
   }
   if (error) error->clear();
@@ -184,7 +306,8 @@ bool EntityIo::setEnabled(size_t entity, bool enabled) {
   return true;
 }
 
-bool EntityIo::fire(size_t source, std::string_view output, double now, const Callback& callback, std::string* error) {
+bool EntityIo::fire(size_t source, std::string_view output, double now, const Callback& callback,
+                    std::string* error, std::string_view value) {
   if (source >= entities_.size() || !std::isfinite(now)) {
     fail(error, source >= entities_.size() ? "entity output source is out of range" : "entity output time must be finite");
     return false;
@@ -210,7 +333,8 @@ bool EntityIo::fire(size_t source, std::string_view output, double now, const Ca
     if (remaining > 0) --remaining;
     for (size_t target = 0; target < entities_.size(); ++target) {
       if (!equalInsensitive(entities_[target].get("targetname"), match.output.target)) continue;
-      InputDelivery delivery{source, target, match.output.input, match.output.parameter};
+      InputDelivery delivery{source, target, match.output.input,
+                             match.output.parameter.empty() ? std::string(value) : match.output.parameter};
       if (match.output.delay == 0)
         callback(delivery);
       else

@@ -512,8 +512,15 @@ void World::deliverInput(const InputDelivery& delivery) {
     }
   } else if (io_->isTimer(delivery.target)) {
     std::string error;
-    if (!io_->input(delivery.target, delivery.input, ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
+    if (!io_->input(delivery.target, delivery.input, delivery.parameter, ioTime_,
+                    [this](const InputDelivery& next) { deliverInput(next); }, &error))
       warnOnce("Unsupported entity input logic_timer." + delivery.input + ": " + error);
+  } else if (iequals(entity.get("classname"), "logic_branch") ||
+             iequals(entity.get("classname"), "math_counter")) {
+    std::string error;
+    if (!io_->input(delivery.target, delivery.input, delivery.parameter, ioTime_,
+                    [this](const InputDelivery& next) { deliverInput(next); }, &error))
+      warnOnce("Unsupported entity input " + std::string(entity.get("classname")) + "." + delivery.input + ": " + error);
   } else if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "Enable")) {
     io_->setEnabled(delivery.target, true);
   } else if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "Disable")) {
