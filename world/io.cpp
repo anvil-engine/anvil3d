@@ -3,6 +3,7 @@
 #include <charconv>
 #include <cmath>
 #include <cctype>
+#include <string>
 
 namespace anvil::world {
 namespace {
@@ -244,6 +245,32 @@ bool EntityIo::input(size_t entity, std::string_view inputName, std::string_view
       fail(error, "unsupported logic_branch input");
       return false;
     }
+  } else if (isClass(entities_[entity], "logic_case")) {
+    std::vector<std::string_view> cases;
+    for (const auto& key : entities_[entity].keys) {
+      if (key.first.size() == 6 && equalInsensitive(std::string_view(key.first).substr(0, 4), "Case") &&
+          std::isdigit(static_cast<unsigned char>(key.first[4])) && std::isdigit(static_cast<unsigned char>(key.first[5])))
+        cases.push_back(key.first);
+    }
+    if (cases.empty()) {
+      fail(error, "logic_case has no authored CaseNN outputs");
+      return false;
+    }
+    std::string_view selected;
+    if (equalInsensitive(inputName, "PickInValue")) {
+      for (const std::string_view key : cases)
+        if (authoredValue(entities_[entity], key).value_or(std::string_view{}) == parameter) {
+          selected = key;
+          break;
+        }
+      if (selected.empty()) return true;
+    } else if (equalInsensitive(inputName, "Pick") || equalInsensitive(inputName, "PickRandom")) {
+      selected = cases[std::uniform_int_distribution<size_t>(0, cases.size() - 1)(timerRng_)];
+    } else {
+      fail(error, "unsupported logic_case input");
+      return false;
+    }
+    return fire(entity, std::string("On") + std::string(selected), now, callback, error);
   } else if (isClass(entities_[entity], "math_counter")) {
     if (!valuesValid_[entity]) {
       fail(error, "math_counter authored values must be finite and min must not exceed max");

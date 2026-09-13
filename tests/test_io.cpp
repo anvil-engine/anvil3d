@@ -124,5 +124,18 @@ int main() {
   CHECK(!logicIo.input(1, "Divide", "0", 0, receive, &error) && !error.empty());
   CHECK(!logicIo.input(1, "Add", "inf", 0, receive, &error) && !error.empty());
 
+  std::vector<bsp::Entity> cases = {
+      {{{"classname", "logic_case"}, {"Case01", "red"}, {"Case02", "blue"},
+        {"OnCase01", "sink,Red,,0,-1"}, {"OnCase02", "sink,Blue,,0,-1"}}},
+      {{{"targetname", "sink"}}},
+  };
+  world::EntityIo caseIo(cases);
+  delivered.clear();
+  CHECK(caseIo.input(0, "PickInValue", "blue", 0, receive, &error));
+  CHECK(delivered.size() == 1 && delivered.back().input == "Blue");
+  CHECK(caseIo.input(0, "PickInValue", "missing", 0, receive, &error) && delivered.size() == 1);
+  CHECK(caseIo.input(0, "Pick", "", 0, receive, &error) && delivered.size() == 2);
+  CHECK(!caseIo.input(0, "Unknown", "", 0, receive, &error) && !error.empty());
+
   return TEST_RESULT();
 }
