@@ -306,11 +306,12 @@ int main(int argc, char** argv) {
         const auto vtx=fsys.readFile(stem+".dx90.vtx","GAME");
         const auto model=mdl&&vvd&&vtx?studio::load(*mdl,*vvd,*vtx,&error):std::nullopt;
         if (model) {
+          const auto ani=model->animationBlockName.empty()?std::optional<std::string>{}:fsys.readFile(model->animationBlockName,"GAME");
           ++viewModels;sequences+=model->sequences.size();bones+=model->bones.size();animations+=model->animations.size();
           for (size_t i=0;i<model->animations.size();++i) {
             const auto& animation=model->animations[i];frames+=size_t(animation.frames);
             for (int frame=0;frame<animation.frames;++frame) {
-              const auto pose=studio::sampleAnimation(*model,*mdl,i,frame,&error);
+              const auto pose=studio::sampleAnimation(*model,*mdl,ani?*ani:std::string_view{},i,frame,&error);
               if (pose) {
                 ++sampled;
                 if (!frame) {

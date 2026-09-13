@@ -11,7 +11,7 @@ namespace anvil::studio {
 // Source studio model = .mdl (header, materials, body parts) + .vvd (vertices) + .vtx (optimized index strips).
 // Loads a render-ready LOD 0 of the default body (sub-model 0 of every body part).
 // Supported: MDL v44-48 (HL2 through TF2 era), VVD v4, VTX v7. Sequence metadata is exposed;
-// skeleton pose decoding, animation blocks and flexes are not yet supported.
+// skeleton pose decoding is supported; flexes and include-model animations are not yet supported.
 
 struct Vertex {
   float pos[3];
@@ -44,7 +44,10 @@ struct Animation {
   int32_t dataOffset = 0;
   int32_t sectionOffset = 0;
   int32_t sectionFrames = 0;
+  int32_t recordOffset = 0;
 };
+
+struct AnimationBlock { int32_t dataStart = 0, dataEnd = 0; };
 
 struct Bone {
   std::string name;
@@ -72,6 +75,8 @@ struct Model {
   std::vector<std::vector<int16_t>> skins; // [family][skinRef] -> index into materials
   std::vector<Bone> bones;
   std::vector<Animation> animations;
+  std::string animationBlockName; // virtual .ani path when external animation blocks are present
+  std::vector<AnimationBlock> animationBlocks;
   std::vector<Sequence> sequences;
   std::vector<Vertex> vertices;          // LOD 0 (after VVD fixups)
   std::vector<Mesh> meshes;
@@ -84,6 +89,8 @@ struct Model {
 std::optional<Model> load(std::string_view mdl, std::string_view vvd, std::string_view vtx,
                           std::string* error = nullptr);
 std::optional<std::vector<BonePose>> sampleAnimation(const Model& model,std::string_view mdl,
+                                                     size_t animation,int frame,std::string* error=nullptr);
+std::optional<std::vector<BonePose>> sampleAnimation(const Model& model,std::string_view mdl,std::string_view ani,
                                                      size_t animation,int frame,std::string* error=nullptr);
 std::optional<std::vector<BoneMatrix>> skinMatrices(const Model& model,const std::vector<BonePose>& pose,
                                                     std::string* error=nullptr);

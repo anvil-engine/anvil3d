@@ -229,6 +229,32 @@ int main(int argc, char** argv) {
     }
   }
 
+  // External ANI block and section records use the same pose stream as inline data.
+  Buf externalMdl = mdl, ani(34);
+  externalMdl.set(348, int32_t(1900));
+  externalMdl.set(352, int32_t(2));
+  externalMdl.set(356, int32_t(1720));
+  externalMdl.str(1900, "models/test/quad.ani");
+  externalMdl.set(1728, int32_t(16));
+  externalMdl.set(1732, int32_t(34));
+  externalMdl.set(1502, int32_t(1));
+  externalMdl.set(1506, int32_t(0));
+  externalMdl.set(1530, int32_t(350));
+  externalMdl.set(1534, int32_t(5));
+  for (int section = 0; section < 4; ++section) externalMdl.set(1800 + size_t(section) * 8, int32_t(1));
+  std::memcpy(ani.d.data(), "IDAG", 4);
+  ani.set(4, int32_t(44));
+  std::memcpy(ani.d.data() + 16, mdl.d.data() + 1650, 18);
+  const auto external = studio::load(externalMdl.d, vvd.d, makeVtx(0x1).d, &err);
+  CHECK(external && external->animationBlockName == "models/test/quad.ani" && external->animationBlocks.size() == 2);
+  if (external) {
+    for (int frame : {0, 7, 9}) {
+      const auto pose = studio::sampleAnimation(*external, externalMdl.d, ani.d, 0, frame, &err);
+      CHECK(pose && (*pose)[0].position[0] == 1.0f && (*pose)[0].position[2] == 3.0f);
+    }
+    CHECK(!studio::sampleAnimation(*external, externalMdl.d, ani.d.substr(0, 17), 0, 0, &err));
+  }
+
   // Mismatched or corrupt companions fail cleanly.
   const Buf vtx = makeVtx(0x1);
   Buf bad = vvd;

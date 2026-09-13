@@ -167,6 +167,8 @@ uint32_t World::loadModelAsset(std::string_view name, bool unique) {
   }
   if (auto mdl = fs_.readFile(key, "GAME")) asset.mdl = std::move(*mdl);
   asset.studio = std::move(geometry.models[0].info);
+  if (!asset.studio.animationBlockName.empty())
+    if (auto ani = fs_.readFile(asset.studio.animationBlockName, "GAME")) asset.ani = std::move(*ani);
   asset.indices = std::move(geometry.indices);
   modelAssets_.push_back(std::move(asset));
   const auto handle = uint32_t(modelAssets_.size());
@@ -193,7 +195,7 @@ bool World::animateModel(uint32_t model, std::string_view sequence, double time,
   const int elapsed = int(std::max(0.0, time) * metadata.fps);
   const int frame = found->flags & 1 ? elapsed % metadata.frames : std::min(elapsed, metadata.frames - 1);
   std::string decodeError;
-  const auto pose = studio::sampleAnimation(asset.studio, asset.mdl, size_t(animation), frame, &decodeError);
+  const auto pose = studio::sampleAnimation(asset.studio, asset.mdl, asset.ani, size_t(animation), frame, &decodeError);
   const auto matrices = pose ? studio::skinMatrices(asset.studio, *pose, &decodeError) : std::nullopt;
   const auto skinned = matrices ? studio::skinVertices(asset.studio, *matrices, &decodeError) : std::nullopt;
   if (!skinned) {

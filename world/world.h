@@ -161,6 +161,7 @@ private:
     std::vector<render::Draw3D> draws;
     studio::Model studio;
     std::string mdl;
+    std::string ani;
     std::vector<uint32_t> indices;
     int animation = -1, frame = -1;
   };

@@ -12,7 +12,7 @@ namespace {
 
 // On-disk record sizes (MDL v44-48 / VVD v4 / VTX v7; VTX records are byte-packed).
 constexpr int64_t kMdlTexture = 64, kMdlBodyPart = 16, kMdlMesh = 116, kMdlSequence = 212,
-                  kMdlBone = 216, kMdlAnimation = 100;
+                  kMdlBone = 216, kMdlAnimation = 100, kMdlAnimationBlock = 8;
 constexpr int64_t kVvdVertex = 48, kVvdFixup = 12;
 constexpr int64_t kVtxBodyPart = 8, kVtxMesh = 9, kVtxStripGroup = 25, kVtxStrip = 27, kVtxVertex = 9;
 constexpr int32_t kMaxCount = 1 << 20; // sanity cap on every count read from a file
@@ -87,6 +87,7 @@ struct Loader {
           !rd(mdl,rec+84,animation.sectionFrames,"animation out of range")||
           !readCString(mdl,rec+nameOffset,name)) return fail("animation name out of range");
       if (animation.frames<0||animation.frames>kMaxCount||animation.block<0) return fail("invalid animation metadata");
+      animation.recordOffset=int32_t(rec);
       if (!animation.block&&animation.dataOffset>0) {
         const int64_t absolute=rec+animation.dataOffset;
         if (absolute>INT32_MAX) return fail("animation data offset out of range");
@@ -94,6 +95,25 @@ struct Loader {
       }
       animation.name=name;
       m.animations.push_back(std::move(animation));
+    }
+
+    int32_t animationBlockNameIndex=0,numAnimationBlocks=0,animationBlockIndex=0;
+    if (!rd(mdl,348,animationBlockNameIndex,"animation block header out of range")||
+        !rd(mdl,352,numAnimationBlocks,"animation block header out of range")||
+        !rd(mdl,356,animationBlockIndex,"animation block header out of range")||
+        !count(numAnimationBlocks,"bad animation block count")) return false;
+    if (numAnimationBlocks) {
+      std::string_view name;
+      if (!readCString(mdl,animationBlockNameIndex,name)) return fail("animation block name out of range");
+      m.animationBlockName=name;
+      for (int32_t i=0;i<numAnimationBlocks;++i) {
+        AnimationBlock block;
+        const int64_t rec=int64_t(animationBlockIndex)+int64_t(i)*kMdlAnimationBlock;
+        if (!rd(mdl,rec,block.dataStart,"animation block out of range")||
+            !rd(mdl,rec+4,block.dataEnd,"animation block out of range")||
+            block.dataStart<0||block.dataEnd<block.dataStart) return fail("invalid animation block");
+        m.animationBlocks.push_back(block);
+      }
     }
 
     int32_t numSequences=0,sequenceIndex=0;
@@ -315,13 +335,54 @@ int Model::materialFor(const Mesh& mesh, size_t family) const {
 
 std::optional<std::vector<BonePose>> sampleAnimation(const Model& model,std::string_view mdl,
                                                      size_t animationIndex,int frame,std::string* error) {
+  return sampleAnimation(model,mdl,{},animationIndex,frame,error);
+}
+
+std::optional<std::vector<BonePose>> sampleAnimation(const Model& model,std::string_view mdl,std::string_view ani,
+                                                     size_t animationIndex,int frame,std::string* error) {
   auto fail=[&](const char* reason)->std::optional<std::vector<BonePose>> { if(error)*error=reason;return {}; };
   if (animationIndex>=model.animations.size()) return fail("animation index out of range");
   const Animation& animation=model.animations[animationIndex];
-  if (animation.block) return fail("external animation block is unsupported");
-  if (animation.sectionOffset||animation.sectionFrames) return fail("sectioned animation is unsupported");
   if (animation.frames<=0||frame<0||frame>=animation.frames) return fail("animation frame out of range");
-  if (animation.dataOffset<=0) return fail("animation has no inline frame data");
+  if (animation.block<0) return fail("invalid animation block");
+
+  bool aniHeaderChecked=false;
+  const char* externalError="external animation block is unavailable";
+  auto external=[&](int32_t block,int32_t offset,std::string_view& dataOut,int64_t& rec) {
+    if (block<=0||size_t(block)>=model.animationBlocks.size()) { externalError="external animation block index is invalid";return false; }
+    if (!aniHeaderChecked) {
+      int32_t version=0;
+      if (ani.size()<4||std::memcmp(ani.data(),"IDAG",4)!=0||!readAt(ani,4,version)||version!=model.version) {
+        externalError="external animation file is invalid or missing";
+        return false;
+      }
+      aniHeaderChecked=true;
+    }
+    const AnimationBlock& range=model.animationBlocks[size_t(block)];
+    if (offset<0||int64_t(range.dataStart)+offset>=range.dataEnd) { externalError="external animation offset is invalid";return false; }
+    dataOut=ani.substr(size_t(range.dataStart),size_t(range.dataEnd-range.dataStart));
+    rec=offset;
+    return true;
+  };
+  std::string_view animationData=mdl;
+  int64_t rec=0;
+  int localFrame=frame;
+  if (animation.sectionFrames>0) {
+    if (animation.sectionOffset<=0) return fail("animation section data is unavailable");
+    int section=frame/animation.sectionFrames;
+    localFrame=frame-section*animation.sectionFrames;
+    if (frame==animation.frames-1&&animation.frames>animation.sectionFrames) { section=animation.frames/animation.sectionFrames+1;localFrame=0; }
+    const int64_t sectionRec=int64_t(animation.recordOffset)+animation.sectionOffset+int64_t(section)*8;
+    int32_t block=0,offset=0;
+    if (!readAt(mdl,sectionRec,block)||!readAt(mdl,sectionRec+4,offset)) return fail("animation section out of range");
+    if (block) { if (!external(block,offset,animationData,rec)) return fail(externalError); }
+    else { if (offset<0) return fail("invalid animation section");rec=int64_t(animation.recordOffset)+offset; }
+  } else if (animation.block) {
+    if (!external(animation.block,animation.dataOffset,animationData,rec)) return fail(externalError);
+  } else {
+    if (animation.dataOffset<=0) return fail("animation has no inline frame data");
+    rec=animation.dataOffset;
+  }
 
   std::vector<BonePose> pose(model.bones.size());
   for (size_t i=0;i<model.bones.size();++i) {
@@ -340,16 +401,16 @@ std::optional<std::vector<BonePose>> sampleAnimation(const Model& model,std::str
   };
   auto valueAt=[&](int64_t ptr,int component,int sample,int16_t& value) {
     int16_t offset=0;
-    if (!readAt(mdl,ptr+component*2,offset)) return false;
+    if (!readAt(animationData,ptr+component*2,offset)) return false;
     if (!offset) { value=0;return true; }
     if (offset<0) return false;
     int64_t cursor=ptr+offset;
     for (int runs=0;runs<65536;++runs) {
       uint8_t valid=0,total=0;
-      if (!readAt(mdl,cursor,valid)||!readAt(mdl,cursor+1,total)||!total||valid>total) return false;
+      if (!readAt(animationData,cursor,valid)||!readAt(animationData,cursor+1,total)||!total||valid>total) return false;
       if (sample<total) {
         if (!valid) { value=0;return true; }
-        return readAt(mdl,cursor+2+int64_t(std::min(sample,int(valid)-1))*2,value);
+        return readAt(animationData,cursor+2+int64_t(std::min(sample,int(valid)-1))*2,value);
       }
       sample-=total;cursor+=2+int64_t(valid)*2;
     }
@@ -363,41 +424,40 @@ std::optional<std::vector<BonePose>> sampleAnimation(const Model& model,std::str
     out[2]=cx*cy*sz-sx*sy*cz;out[3]=cx*cy*cz+sx*sy*sz;
   };
 
-  int64_t rec=animation.dataOffset;
   for (size_t records=0;records<=model.bones.size();++records) {
     uint8_t boneIndex=0,flags=0;int16_t next=0;
-    if (!readAt(mdl,rec,boneIndex)||!readAt(mdl,rec+1,flags)||!readAt(mdl,rec+2,next))
+    if (!readAt(animationData,rec,boneIndex)||!readAt(animationData,rec+1,flags)||!readAt(animationData,rec+2,next))
       return fail("animation record out of range");
     if (boneIndex==255) return pose;
     if (boneIndex>=model.bones.size()) return fail("animation bone out of range");
     const Bone& bone=model.bones[boneIndex];BonePose& out=pose[boneIndex];
     const bool delta=flags&0x10;
     if (delta) { std::fill_n(out.position,3,0.0f);out.rotation[0]=out.rotation[1]=out.rotation[2]=0;out.rotation[3]=1; }
-    int64_t data=rec+4;
+    int64_t payload=rec+4;
     if (flags&0x02) {
       uint16_t x=0,y=0,z=0;
-      if(!readAt(mdl,data,x)||!readAt(mdl,data+2,y)||!readAt(mdl,data+4,z)) return fail("raw quaternion out of range");
+      if(!readAt(animationData,payload,x)||!readAt(animationData,payload+2,y)||!readAt(animationData,payload+4,z)) return fail("raw quaternion out of range");
       out.rotation[0]=(int(x)-32768)/32768.0f;out.rotation[1]=(int(y)-32768)/32768.0f;
       out.rotation[2]=(int(z&0x7fff)-16384)/16384.0f;
       out.rotation[3]=std::sqrt(std::max(0.0f,1-out.rotation[0]*out.rotation[0]-out.rotation[1]*out.rotation[1]-out.rotation[2]*out.rotation[2]));
-      if(z&0x8000) out.rotation[3]=-out.rotation[3];data+=6;
+      if(z&0x8000) out.rotation[3]=-out.rotation[3];payload+=6;
     } else if (flags&0x20) {
-      uint64_t q=0;if(!readAt(mdl,data,q)) return fail("raw quaternion out of range");
+      uint64_t q=0;if(!readAt(animationData,payload,q)) return fail("raw quaternion out of range");
       out.rotation[0]=(int(q&0x1fffff)-1048576)/1048576.5f;
       out.rotation[1]=(int((q>>21)&0x1fffff)-1048576)/1048576.5f;
       out.rotation[2]=(int((q>>42)&0x1fffff)-1048576)/1048576.5f;
       out.rotation[3]=std::sqrt(std::max(0.0f,1-out.rotation[0]*out.rotation[0]-out.rotation[1]*out.rotation[1]-out.rotation[2]*out.rotation[2]));
-      if(q>>63) out.rotation[3]=-out.rotation[3];data+=8;
+      if(q>>63) out.rotation[3]=-out.rotation[3];payload+=8;
     } else if (flags&0x08) {
       float angle[3];
-      for(int i=0;i<3;++i){int16_t v=0;if(!valueAt(rec+4,i,frame,v))return fail("rotation stream out of range");angle[i]=(delta?0:bone.euler[i])+v*bone.rotationScale[i];}
+      for(int i=0;i<3;++i){int16_t v=0;if(!valueAt(rec+4,i,localFrame,v))return fail("rotation stream out of range");angle[i]=(delta?0:bone.euler[i])+v*bone.rotationScale[i];}
       quaternion(angle,out.rotation);
     }
     if (flags&0x01) {
-      for(int i=0;i<3;++i){uint16_t h=0;if(!readAt(mdl,data+i*2,h))return fail("raw position out of range");out.position[i]=half(h);}
+      for(int i=0;i<3;++i){uint16_t h=0;if(!readAt(animationData,payload+i*2,h))return fail("raw position out of range");out.position[i]=half(h);}
     } else if (flags&0x04) {
       const int64_t ptr=rec+4+((flags&0x08)?6:0);
-      for(int i=0;i<3;++i){int16_t v=0;if(!valueAt(ptr,i,frame,v))return fail("position stream out of range");out.position[i]=(delta?0:bone.position[i])+v*bone.positionScale[i];}
+      for(int i=0;i<3;++i){int16_t v=0;if(!valueAt(ptr,i,localFrame,v))return fail("position stream out of range");out.position[i]=(delta?0:bone.position[i])+v*bone.positionScale[i];}
     }
     if (!next) return pose;
     if (next<4) return fail("invalid animation record chain");
