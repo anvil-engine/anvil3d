@@ -419,6 +419,15 @@ int main(int argc, char** argv) {
     CHECK(!world::normalizeMapName("../outside"));
     CHECK(!world::normalizeMapName("d1_trainstation_02;quit"));
     CHECK(!world::normalizeMapName(""));
+    const auto tracks = bsp::parseEntities(
+      R"({ "classname" "path_track" "targetname" "A" "target" "B" })"
+      R"({ "classname" "path_track" "targetname" "B" "target" "A" })"
+      R"({ "classname" "info_target" "targetname" "wrong" })");
+    CHECK(world::findPathTrack(tracks, "a") == 0);
+    CHECK(world::findPathTrack(tracks, tracks[0].get("target")) == 1);
+    CHECK(world::findPathTrack(tracks, tracks[1].get("target")) == 0); // cycles resolve one edge at a time
+    CHECK(!world::findPathTrack(tracks, "missing"));
+    CHECK(!world::findPathTrack(tracks, "wrong"));
   }
 
   // Static prop light: nearest ambient sample of the point's leaf, averaged over the 6 cube faces (linear).

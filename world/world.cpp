@@ -73,6 +73,16 @@ physics::Pose movedDoorPose(const Transform& from, const Transform& to, const ph
   return out;
 }
 
+std::optional<bsp::Vec3> entityOrigin(const bsp::Entity& entity) {
+  bsp::Vec3 out;
+  char trailing = 0;
+  const std::string text(entity.get("origin"));
+  if (std::sscanf(text.c_str(), " %f %f %f %c", &out.x, &out.y, &out.z, &trailing) != 3 ||
+      !std::isfinite(out.x) || !std::isfinite(out.y) || !std::isfinite(out.z))
+    return std::nullopt;
+  return out;
+}
+
 } // namespace
 
 render::Mat4 viewProjection(const Camera& camera, float aspect) {
@@ -145,6 +155,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   w->setupMaterials(mesh);
   w->setupEntities(mesh);
   w->setupDoors();
+  w->setupTrackTrains();
   w->setupProps();
   w->setupDynamicProps();
   w->setupSky();
@@ -463,10 +474,7 @@ void World::setupEntities(const Mesh& mesh) {
 void World::setupDoors() {
   for (size_t i = 0; i < entities_.size(); ++i) {
     EntityInstance& instance = entities_[i];
-    if (iequals(instance.entity.classname, "func_tracktrain")) {
-      warnOnce("Unsupported moving brush entity " + instance.entity.classname);
-      continue;
-    }
+    if (iequals(instance.entity.classname, "func_tracktrain")) continue;
     const bool rotating = iequals(instance.entity.classname, "func_door_rotating");
     if (!rotating && !iequals(instance.entity.classname, "func_door")) continue;
     const bsp::Entity& authored = entityLump_[instance.entity.entity];
@@ -533,6 +541,49 @@ void World::setupDoors() {
   }
 }
 
+void World::setupTrackTrains() {
+  auto number = [&](const bsp::Entity& entity, std::string_view key, float fallback) {
+    const std::string_view text = entity.get(key);
+    if (text.empty()) return fallback;
+    float value = 0;
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+    return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() && std::isfinite(value)
+             ? value : fallback;
+  };
+  for (size_t i = 0; i < entities_.size(); ++i) {
+    EntityInstance& instance = entities_[i];
+    if (!iequals(instance.entity.classname, "func_tracktrain")) continue;
+    const bsp::Entity& authored = entityLump_[instance.entity.entity];
+    const auto path = findPathTrack(entityLump_, authored.get("target"));
+    const auto origin = path ? entityOrigin(entityLump_[*path]) : std::nullopt;
+    if (!path || !origin) {
+      ANVIL_WARN("entity", "func_tracktrain %zu has invalid initial path_track", instance.entity.entity);
+      continue;
+    }
+    TrackTrain train;
+    train.entity = instance.entity.entity;
+    train.instance = i;
+    train.path = *path;
+    train.maxSpeed = number(authored, "startspeed", 100);
+    if (train.maxSpeed <= 0) train.maxSpeed = 100;
+    train.speed = std::clamp(number(authored, "speed", 0), 0.0f, train.maxSpeed);
+    train.height = number(authored, "height", 0);
+    if (!std::isfinite(train.height)) train.height = 0;
+    int flags = 0;
+    const std::string_view flagText = authored.get("spawnflags");
+    if (!flagText.empty()) {
+      const auto parsed = std::from_chars(flagText.data(), flagText.data() + flagText.size(), flags);
+      if (parsed.ec != std::errc{} || parsed.ptr != flagText.data() + flagText.size()) flags = 0;
+    }
+    train.passable = (flags & 8) != 0;
+    train.fixedOrientation = (flags & 16) != 0;
+    train.noPitch = (flags & 1) != 0;
+    instance.entity.transform.origin = {origin->x, origin->y, origin->z + train.height};
+    trackTrains_.push_back(std::move(train));
+    updateTrackTrainPose(trackTrains_.size() - 1, nullptr);
+  }
+}
+
 void World::attachPhysics(physics::Scene& scene) {
   for (Door& door : doors_) {
     if (door.passable) continue;
@@ -548,6 +599,20 @@ void World::attachPhysics(physics::Scene& scene) {
       door.bodies.push_back(body);
       door.basePoses.push_back(scene.bodyPose(body));
       scene.setBodyEnabled(body, io_->enabled(door.entity));
+    }
+  }
+  for (TrackTrain& train : trackTrains_) {
+    if (train.passable) continue;
+    const EntityInstance& instance = entities_[train.instance];
+    train.attachedTransform = instance.entity.transform;
+    for (const auto& hull : modelHulls(map_, instance.entity.model, instance.entity.transform, true)) {
+      const physics::Body body = scene.addKinematicHull(hull);
+      if (body == physics::invalidBody) {
+        ANVIL_WARN("entity", "func_tracktrain %zu has invalid collision hull", train.entity);
+        continue;
+      }
+      train.bodies.push_back(body);
+      train.basePoses.push_back(scene.bodyPose(body));
     }
   }
   scene.optimize();
@@ -571,6 +636,22 @@ void World::updateDoorPose(size_t index, physics::Scene* scene) {
     scene->setBodyPose(door.bodies[i], pose);
     scene->setBodyEnabled(door.bodies[i], io_->enabled(door.entity));
   }
+}
+
+void World::updateTrackTrainPose(size_t index, physics::Scene* scene) {
+  TrackTrain& train = trackTrains_[index];
+  EntityInstance& instance = entities_[train.instance];
+  instance.matrix = instance.entity.transform.matrix();
+  const auto& model = map_.models[instance.entity.model];
+  transformBox(instance.entity.transform, model.mins, model.maxs, instance.mins, instance.maxs);
+  instance.clusters.clear();
+  clustersInBox(map_, instance.mins, instance.maxs, instance.clusters);
+  std::sort(instance.clusters.begin(), instance.clusters.end());
+  instance.clusters.erase(std::unique(instance.clusters.begin(), instance.clusters.end()), instance.clusters.end());
+  if (!scene) return;
+  for (size_t i = 0; i < train.bodies.size(); ++i)
+    scene->setBodyPose(train.bodies[i], movedDoorPose(train.attachedTransform, instance.entity.transform,
+                                                     train.basePoses[i]));
 }
 
 void World::beginDoor(size_t entity, bool open) {
@@ -684,7 +765,45 @@ void World::deliverInput(const InputDelivery& delivery) {
   const bool trigger = iequals(entity.get("classname"), "trigger_once") ||
                        iequals(entity.get("classname"), "trigger_multiple") ||
                        iequals(entity.get("classname"), "trigger_changelevel");
-  if (iequals(entity.get("classname"), "func_door") || iequals(entity.get("classname"), "func_door_rotating")) {
+  if (iequals(entity.get("classname"), "func_tracktrain")) {
+    auto train = std::find_if(trackTrains_.begin(), trackTrains_.end(),
+                              [&](const TrackTrain& item) { return item.entity == delivery.target; });
+    if (train == trackTrains_.end()) warnOnce("func_tracktrain has no drawable BSP model or valid path");
+    else if (iequals(delivery.input, "Stop")) train->speed = 0;
+    else if (iequals(delivery.input, "Start") || iequals(delivery.input, "StartForward") ||
+             iequals(delivery.input, "Resume")) {
+      const bool stopped = train->speed == 0;
+      train->speed = train->maxSpeed;
+      if (stopped) {
+        std::string error;
+        if (!io_->fire(train->entity, "OnStart", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
+          ANVIL_WARN("entity", "func_tracktrain %zu OnStart: %s", train->entity, error.c_str());
+      }
+    } else if (iequals(delivery.input, "Toggle")) {
+      const bool stopped = train->speed == 0;
+      train->speed = stopped ? train->maxSpeed : 0;
+      if (stopped) {
+        std::string error;
+        if (!io_->fire(train->entity, "OnStart", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
+          ANVIL_WARN("entity", "func_tracktrain %zu OnStart: %s", train->entity, error.c_str());
+      }
+    } else if (iequals(delivery.input, "SetSpeed")) {
+      float scale = 0;
+      const auto parsed = std::from_chars(delivery.parameter.data(), delivery.parameter.data() + delivery.parameter.size(), scale);
+      if (parsed.ec != std::errc{} || parsed.ptr != delivery.parameter.data() + delivery.parameter.size() ||
+          !std::isfinite(scale))
+        warnOnce("func_tracktrain SetSpeed requires a finite number");
+      else {
+        const bool stopped = train->speed == 0;
+        train->speed = train->maxSpeed * std::clamp(scale, 0.0f, 1.0f);
+        if (stopped && train->speed > 0) {
+          std::string error;
+          if (!io_->fire(train->entity, "OnStart", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
+            ANVIL_WARN("entity", "func_tracktrain %zu OnStart: %s", train->entity, error.c_str());
+        }
+      }
+    } else warnOnce("Unsupported entity input func_tracktrain." + delivery.input);
+  } else if (iequals(entity.get("classname"), "func_door") || iequals(entity.get("classname"), "func_door_rotating")) {
     auto door = std::find_if(doors_.begin(), doors_.end(), [&](const Door& item) { return item.entity == delivery.target; });
     if (iequals(delivery.input, "Enable") || iequals(delivery.input, "Disable")) {
       io_->setEnabled(delivery.target, iequals(delivery.input, "Enable"));
@@ -786,6 +905,54 @@ void World::tick(float dt, physics::Scene* scene) {
       ANVIL_WARN("entity", "%s %zu %s: %s", door.rotating ? "func_door_rotating" : "func_door",
                  door.entity, output, error.c_str());
     if (opened && !door.toggle && door.wait >= 0) door.closeAt = ioTime_ + door.wait;
+  }
+  for (size_t i = 0; i < trackTrains_.size(); ++i) {
+    TrackTrain& train = trackTrains_[i];
+    float distance = train.speed * dt;
+    size_t hops = 0;
+    while (distance > 0 && hops++ <= entityLump_.size()) {
+      const auto next = findPathTrack(entityLump_, entityLump_[train.path].get("target"));
+      const auto target = next ? entityOrigin(entityLump_[*next]) : std::nullopt;
+      if (!next || !target) {
+        train.speed = 0;
+        warnOnce("func_tracktrain " + std::to_string(train.entity) + " reached a broken path_track link");
+        break;
+      }
+      EntityInstance& instance = entities_[train.instance];
+      const bsp::Vec3 destination{target->x, target->y, target->z + train.height};
+      const bsp::Vec3 delta{destination.x - instance.entity.transform.origin.x,
+                            destination.y - instance.entity.transform.origin.y,
+                            destination.z - instance.entity.transform.origin.z};
+      const float remaining = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+      if (remaining > 0 && !train.fixedOrientation) {
+        constexpr float kRadToDeg = 180.0f / 3.14159265f;
+        instance.entity.transform.angles.y = std::atan2(delta.y, delta.x) * kRadToDeg;
+        if (!train.noPitch)
+          instance.entity.transform.angles.x = -std::atan2(delta.z, std::sqrt(delta.x * delta.x + delta.y * delta.y)) * kRadToDeg;
+      }
+      if (remaining > distance && remaining > 0) {
+        const float scale = distance / remaining;
+        instance.entity.transform.origin = {instance.entity.transform.origin.x + delta.x * scale,
+                                            instance.entity.transform.origin.y + delta.y * scale,
+                                            instance.entity.transform.origin.z + delta.z * scale};
+        distance = 0;
+      } else {
+        instance.entity.transform.origin = destination;
+        distance -= remaining;
+        train.path = *next;
+        std::string error;
+        if (!io_->fire(train.path, "OnPass", ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); }, &error))
+          ANVIL_WARN("entity", "path_track %zu OnPass: %s", train.path, error.c_str());
+        if (!io_->fire(train.entity, "OnNextPoint", ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); }, &error))
+          ANVIL_WARN("entity", "func_tracktrain %zu OnNextPoint: %s", train.entity, error.c_str());
+      }
+      updateTrackTrainPose(i, scene);
+      if (train.speed == 0) break;
+    }
+    if (distance > 0) {
+      train.speed = 0;
+      warnOnce("func_tracktrain " + std::to_string(train.entity) + " stopped on a zero-length path cycle");
+    }
   }
 }
 

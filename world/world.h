@@ -87,10 +87,12 @@ private:
   void setupSky();
   void setupTriggers();
   void setupDoors();
+  void setupTrackTrains();
   void startIo();
   void deliverInput(const InputDelivery& delivery);
   void beginDoor(size_t entity, bool open);
   void updateDoorPose(size_t door, physics::Scene* scene);
+  void updateTrackTrainPose(size_t train, physics::Scene* scene);
   void appendVisible(uint32_t batch, std::vector<render::Draw3D>& out); // world batch, visible faces merged
   render::TextureHandle texture(std::string_view name);
 
@@ -130,6 +132,15 @@ private:
     Transform attachedTransform;
   };
   std::vector<Door> doors_;
+  struct TrackTrain {
+    size_t entity = 0, instance = 0, path = 0;
+    float maxSpeed = 100, speed = 0, height = 0;
+    bool passable = false, fixedOrientation = false, noPitch = false;
+    std::vector<physics::Body> bodies;
+    std::vector<physics::Pose> basePoses;
+    Transform attachedTransform;
+  };
+  std::vector<TrackTrain> trackTrains_;
   struct DynamicProp {
     size_t entity = 0;
     uint32_t model = 0;

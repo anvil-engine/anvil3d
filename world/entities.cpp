@@ -1,6 +1,7 @@
 #include "world/entities.h"
 
 #include "common/log.h"
+#include "common/strutil.h"
 #include "filesystem/filesystem.h"
 
 #include <algorithm>
@@ -131,6 +132,16 @@ bool linearDoorAllowsInput(bool enabled, bool locked, std::string_view input) {
   if (!enabled) return false;
   if (!locked) return true;
   return input != "Open" && input != "Toggle";
+}
+
+std::optional<size_t> findPathTrack(const std::vector<bsp::Entity>& entities, std::string_view name) {
+  if (name.empty() || name.size() > 1024) return std::nullopt;
+  for (size_t i = 0; i < entities.size(); ++i)
+    if ((iequals(entities[i].get("classname"), "path_track") ||
+         iequals(entities[i].get("classname"), "env_portal_path_track")) &&
+        iequals(entities[i].get("targetname"), name))
+      return i;
+  return std::nullopt;
 }
 
 std::optional<std::string> normalizeMapName(std::string_view name) {

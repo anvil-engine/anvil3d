@@ -53,6 +53,9 @@ std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bs
 std::optional<RotatingDoorMove> rotatingDoorMove(const bsp::Entity& entity);
 bool linearDoorAllowsInput(bool enabled, bool locked, std::string_view input);
 
+// Resolves a Source entity targetname to a path_track. Name matching is ASCII case-insensitive.
+std::optional<size_t> findPathTrack(const std::vector<bsp::Entity>& entities, std::string_view name);
+
 // Normalizes a Source map name for the `map` command. Rejects paths that can escape the mounted game filesystem
 // or inject another console command.
 std::optional<std::string> normalizeMapName(std::string_view name);
