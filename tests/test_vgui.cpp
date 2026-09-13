@@ -125,7 +125,7 @@ int main(int argc,char** argv) {
     CHECK(invalid&&!vgui::panelResources(*invalid,localization,&error));
   }
   memory->data["resource/scheme.res"]=R"(Scheme {
-    Colors { Paper "10 20 30 40" Alias "Paper" Transparent "0 0 0 0" Bad "256 0 0 255" }
+    Colors { Paper "10 20 30 40" Alias "Paper" Transparent "0 0 0 0" Panel.FgColor "Paper" Bad "256 0 0 255" }
     BaseSettings {
       "Label.TextColor" "Alias" "Label.BgColor" "Transparent"
       "Button.TextColor" "Label.TextColor" "Button.BgColor" "Transparent"
@@ -174,10 +174,11 @@ int main(int argc,char** argv) {
     auto runtime=descriptors?vgui::PanelRuntime::instantiate(std::move(*descriptors),640,480,&error):std::nullopt;
     CHECK(runtime&&runtime->moveFocus());
     auto paint=runtime?runtime->paint(scheme,&error):std::nullopt;
-    CHECK(paint&&paint->solids.size()==3&&paint->borders.size()==1&&paint->text.size()==1&&paint->unsupported==0);
+    CHECK(paint&&paint->solids.size()==3&&paint->borders.size()==1&&paint->text.size()==2&&paint->unsupported==0);
     if(paint) {
-      CHECK(paint->text[0].text=="Other"&&paint->text[0].font=="Default");
-      CHECK(paint->text[0].alignment==vgui::TextAlignment::Center);
+      CHECK(paint->text[0].text=="Пункт"&&paint->text[0].font=="Default");
+      CHECK(paint->text[1].text=="Other"&&paint->text[1].font=="Default");
+      CHECK(paint->text[1].alignment==vgui::TextAlignment::Center);
       CHECK(paint->borders[0].border.lines.size()==4);
       auto batch=vgui::paintBatch(*paint,10,20,{0,0,640,480},&error);
       CHECK(batch&&batch->cmds.size()==1&&batch->vertices.size()==28&&batch->indices.size()==42);

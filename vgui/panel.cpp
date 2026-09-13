@@ -166,8 +166,10 @@ std::optional<PaintPlan> PanelRuntime::paint(const Scheme& scheme, std::string* 
       plan.borders.push_back({control.bounds,std::move(*border)});
     }
     const auto& text = control.resource.label.empty() ? control.resource.title : control.resource.label;
-    if ((control.kind == ControlKind::Button || control.kind == ControlKind::Label) && !text.empty()) {
-      auto foreground = resolveColor(control,control.resource.foreground,std::string(prefix)+".TextColor");
+    if ((control.kind == ControlKind::Panel || control.kind == ControlKind::Button ||
+         control.kind == ControlKind::Label) && !text.empty()) {
+      const std::string panelTextFallback = control.kind == ControlKind::Panel ? "Panel.FgColor" : std::string(prefix)+".TextColor";
+      auto foreground = resolveColor(control,control.resource.foreground,panelTextFallback);
       if (!foreground) return {};
       TextAlignment alignment = TextAlignment::Center;
       if (iequals(control.resource.textAlignment,"west")) alignment = TextAlignment::West;
