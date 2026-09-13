@@ -2,6 +2,7 @@
 
 #include "common/log.h"
 #include "common/strutil.h"
+#include "common/keyvalues.h"
 #include "filesystem/filesystem.h"
 #include "filesystem/zip.h"
 #include "formats/vmt.h"
@@ -20,6 +21,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <functional>
 #include <optional>
 #include <set>
 #include <unordered_map>
@@ -31,6 +33,39 @@ std::string lower(std::string_view s) {
   std::string out(s);
   for (char& c : out) c = char(std::tolower(static_cast<unsigned char>(c)));
   return out;
+}
+
+std::optional<std::string> resolveSoundScript(const FileSystem& fs, std::string_view name) {
+  const auto manifest = fs.readFile("scripts/game_sounds_manifest.txt", "GAME");
+  if (!manifest) return std::nullopt;
+  std::string error;
+  const auto root = parseKeyValues(*manifest, &error);
+  if (!root) return std::nullopt;
+  std::vector<std::string> scripts;
+  std::function<void(const KeyValues&)> collect = [&](const KeyValues& node) {
+    if (iequals(node.key, "file") && !node.value.empty()) scripts.push_back(node.value);
+    for (const auto& child : node.children) collect(child);
+  };
+  collect(*root);
+  for (const auto& script : scripts) {
+    const auto text = fs.readFile(script, "GAME");
+    if (!text) continue;
+    const auto data = parseKeyValues(*text, &error);
+    if (!data) continue;
+    std::function<std::optional<std::string>(const KeyValues&)> search = [&](const KeyValues& node) -> std::optional<std::string> {
+      if (iequals(node.key, name)) {
+        if (const auto* wave = node.find("wave"); wave && !wave->value.empty()) return std::string(wave->value);
+        if (const auto* rnd = node.find("rndwave"))
+          for (const auto& item : rnd->children)
+            if (iequals(item.key, "wave") && !item.value.empty()) return std::string(item.value);
+      }
+      for (const auto& child : node.children)
+        if (auto found = search(child)) return found;
+      return std::nullopt;
+    };
+    if (auto found = search(*data)) return found;
+  }
+  return std::nullopt;
 }
 
 Transform entityTransform(const bsp::Entity& entity) {
@@ -771,8 +806,12 @@ void World::setupAmbientSounds() {
     }
     std::string path = lower(message);
     if (!path.ends_with(".wav")) {
-      warnOnce("Unsupported ambient_generic sound script: " + message);
-      continue;
+      const auto resolved = resolveSoundScript(fs_, message);
+      if (!resolved) {
+        warnOnce("Unsupported ambient_generic sound script: " + message);
+        continue;
+      }
+      path = lower(*resolved);
     }
     if (!path.starts_with("sound/")) path = "sound/" + path;
     const auto normalized = normalizePath(path);
