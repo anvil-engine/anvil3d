@@ -510,7 +510,8 @@ int main(int argc, char** argv) {
       console.execute("map " + *nextLevel);
       last = SteadyClock::now();
     }
-    if (level) level->updateAudio(camera);
+    const world::Camera viewCamera = level ? level->viewCamera(camera) : camera;
+    if (level) level->updateAudio(viewCamera);
 
     const float clear[4] = {0.08f, 0.08f, 0.1f, 1.0f};
     if (device && device->beginFrame(clear)) {
@@ -518,10 +519,10 @@ int main(int argc, char** argv) {
       window->logicalSize(lw, lh);
       device->targetSize(pw, ph);
       if (level && ph) {
-        level->draw(camera, float(pw) / float(ph), !novis.asBool());
-        if (diagnosticPlay && simulation) combatView.draw(*level,*simulation,combat,camera,float(pw)/float(ph),clock.simTime(),!menu.visible && !freeCamera);
+        level->draw(viewCamera, float(pw) / float(ph), !novis.asBool());
+        if (diagnosticPlay && simulation) combatView.draw(*level,*simulation,combat,viewCamera,float(pw)/float(ph),clock.simTime(),!menu.visible && !freeCamera);
       }
-      if (diagnosticPlay) device->draw2d(gameplay::interfaceBatch(menu,combat,camera,pw,ph,level != nullptr));
+      if (diagnosticPlay) device->draw2d(gameplay::interfaceBatch(menu,combat,viewCamera,pw,ph,level != nullptr));
       if (!vguiDiagnosticBatch.indices.empty()) device->draw2d(vguiDiagnosticBatch);
       for (const auto& text:vguiDiagnosticText) device->draw2d(text);
       if (level) device->draw2d(level->fadeOverlay(pw, ph));

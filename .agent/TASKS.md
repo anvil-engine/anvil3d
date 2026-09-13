@@ -37,6 +37,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
   - [x] Implement generic `func_button` movement and authored `OnPressed` dispatch with synced kinematic collision.
   - [x] Implement generic `func_breakable` health, `TakeDamage`/`Break`, enable state, and `OnBreak` dispatch with synced collision.
   - [x] Implement generic `env_fade` authored color/alpha, duration/hold timing, `Fade`/`FadeReverse`/`Hold`, and lifecycle outputs.
+  - [x] Implement generic `point_viewcontrol` authored origin/angles/FOV, `Enable`/`Disable`/`SetAngles`/`SetFOV`, and explicit diagnostics for unsupported movement/blending.
   - [x] Implement generic `trigger_changelevel` player overlap, validated `map`/`mapname`, and one-shot map transition through the engine console.
   - [x] Add authored visual foundation for allowlisted humanoid `npc_*` entities: real MDL loading, idle/`DefaultAnim`, `Enable`, `Disable`, and `SetAnimation`; AI/combat remain unsupported.
   - [x] Bridge authored `scripted_sequence` delay/repeat and Begin/Cancel lifecycle to loaded `prop_dynamic` and supported NPC visual animations; NPC AI execution remains unsupported.

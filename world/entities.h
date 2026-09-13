@@ -70,6 +70,11 @@ struct EnvFadeConfig {
   bool fadeFrom = false, stayOut = false;
 };
 
+struct ViewControlConfig {
+  bsp::Vec3 origin{}, angles{};
+  float fov = 90;
+};
+
 // Interprets func_door movedir/lip against the authored local brush bounds.
 std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bsp::Vec3& mins,
                                              const bsp::Vec3& maxs);
@@ -94,6 +99,9 @@ std::optional<ScriptedSequenceConfig> scriptedSequenceConfig(const bsp::Entity& 
 std::optional<EnvFadeConfig> envFadeConfig(const bsp::Entity& entity);
 // Evaluates the authored fade curve. A normal fade goes in, holds, then goes out unless stayOut is set.
 float envFadeOpacity(const EnvFadeConfig& config, double elapsed, bool reverse);
+
+// Reads authored point_viewcontrol placement and view settings.
+std::optional<ViewControlConfig> viewControlConfig(const bsp::Entity& entity);
 
 // Resolves a Source entity targetname to a path_track. Name matching is ASCII case-insensitive.
 std::optional<size_t> findPathTrack(const std::vector<bsp::Entity>& entities, std::string_view name);

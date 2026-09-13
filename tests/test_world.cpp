@@ -359,6 +359,12 @@ int main(int argc, char** argv) {
   cam.pitch = 90; // looking straight down
   clip(cam, {10, 0, -20}, c);
   CHECK(near(c[0], 0) && near(c[1], 0) && near(c[3], 20));
+  cam = {};
+  float wide[4], narrow[4];
+  clip(cam, {100, -10, 0}, wide);
+  cam.fov = 60;
+  clip(cam, {100, -10, 0}, narrow);
+  CHECK(std::fabs(narrow[0] / narrow[3]) > std::fabs(wide[0] / wide[3]));
   visibilityTests();
 
   // Brush models: faces sorted by model, then texdata; one vertex/index set; per-model ranges and bounds.
@@ -478,6 +484,14 @@ int main(int argc, char** argv) {
       R"({ "classname" "env_fade" "duration" "nan" })")[0]));
     CHECK(!world::envFadeConfig(bsp::parseEntities(
       R"({ "classname" "env_fade" "rendercolor" "256 0 0" })")[0]));
+    const auto view = world::viewControlConfig(bsp::parseEntities(
+      R"({ "classname" "point_viewcontrol" "origin" "10 20 30" "angles" "4 5 6" "fov" "70" })")[0]);
+    CHECK(view && near(view->origin.x, 10) && near(view->origin.y, 20) && near(view->origin.z, 30) &&
+          near(view->angles.x, 4) && near(view->angles.y, 5) && near(view->angles.z, 6) && near(view->fov, 70));
+    CHECK(!world::viewControlConfig(bsp::parseEntities(
+      R"({ "classname" "point_viewcontrol" "origin" "10 20" })")[0]));
+    CHECK(!world::viewControlConfig(bsp::parseEntities(
+      R"({ "classname" "point_viewcontrol" "origin" "0 0 0" "angles" "0 0 0" "fov" "180" })")[0]));
     CHECK(world::normalizeMapName("d1_trainstation_02") == "d1_trainstation_02");
     CHECK(world::normalizeMapName(" maps\\D1_trainstation_02.bsp ") == "d1_trainstation_02");
     CHECK(!world::normalizeMapName("../outside"));

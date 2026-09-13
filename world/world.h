@@ -29,6 +29,7 @@ namespace anvil::world {
 struct Camera {
   bsp::Vec3 origin{};
   float pitch = 0, yaw = 0;
+  float fov = 90;
 };
 
 // Source's default field of view: 90 degrees horizontal at 4:3; wider screens keep that vertical angle.
@@ -63,6 +64,8 @@ public:
   // Fires supported trigger behavior when the player's real Jolt shape enters an authored BSP hull.
   void checkTriggers(const physics::Scene& scene);
   void updateAudio(const Camera& listener);
+  // Applies an active authored point_viewcontrol to the player's view.
+  Camera viewCamera(const Camera& player) const;
   // Full-screen authored env_fade overlay, drawn after world and game UI. Empty when transparent.
   render::Batch2D fadeOverlay(uint32_t width, uint32_t height) const;
   // Returns a trigger_changelevel request once, then clears it.
@@ -102,6 +105,7 @@ private:
   void setupScriptedSequences();
   void setupChoreographedScenes();
   void setupFades();
+  void setupViewControls();
   void playAmbient(size_t ambient);
   void stopAmbient(size_t ambient);
   void activateSoundscape(std::optional<size_t> soundscape);
@@ -225,6 +229,12 @@ private:
   const FadeEffect* activeFade_ = nullptr;
   double fadeStart_ = 0;
   bool fadeReverse_ = false, fadeHeld_ = false, fadeCompleteFired_ = false;
+  struct ViewControl {
+    size_t entity = 0;
+    ViewControlConfig target;
+  };
+  std::vector<ViewControl> viewControls_;
+  std::optional<size_t> activeViewControl_;
   // Parallel to Mesh::batches: the batch's whole index range with its material; faces [firstFace, +faceCount).
   struct Material {
     render::Draw3D draw;

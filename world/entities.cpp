@@ -263,6 +263,26 @@ float envFadeOpacity(const EnvFadeConfig& config, double elapsed, bool reverse) 
   return float(std::clamp(1.0 - (elapsed - duration - config.hold) / duration, 0.0, 1.0));
 }
 
+std::optional<ViewControlConfig> viewControlConfig(const bsp::Entity& entity) {
+  ViewControlConfig out;
+  auto vector = [&](std::string_view key, bsp::Vec3& value) {
+    const std::string text(entity.get(key));
+    char extra = 0;
+    return std::sscanf(text.c_str(), " %f %f %f %c", &value.x, &value.y, &value.z, &extra) == 3 &&
+           std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+  };
+  if (!vector("origin", out.origin) || !vector("angles", out.angles)) return std::nullopt;
+  auto number = [&](std::string_view key, float& value, float min, float max) {
+    const std::string_view text = entity.get(key);
+    if (text.empty()) return true;
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+    return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() &&
+           std::isfinite(value) && value >= min && value <= max;
+  };
+  if (!number("fov", out.fov, 1, 179)) return std::nullopt;
+  return out;
+}
+
 std::optional<size_t> findPathTrack(const std::vector<bsp::Entity>& entities, std::string_view name) {
   if (name.empty() || name.size() > 1024) return std::nullopt;
   for (size_t i = 0; i < entities.size(); ++i)

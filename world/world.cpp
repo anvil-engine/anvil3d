@@ -139,7 +139,8 @@ render::Mat4 viewProjection(const Camera& camera, float aspect) {
   for (int row = 0; row < 3; ++row)
     for (int col = 0; col < 4; ++col) view.m[col * 4 + row] = rows[row][col];
   view.m[15] = 1;
-  const float fovY = 2.0f * std::atan(0.75f); // tan(45 deg) * 3/4
+  const float fov = std::clamp(camera.fov, 1.0f, 179.0f) * kDeg;
+  const float fovY = 2.0f * std::atan(std::tan(fov * 0.5f) * 0.75f);
   return render::perspective(fovY, aspect, 4.0f) * view;
 }
 
@@ -208,6 +209,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   w->setupScriptedSequences();
   w->setupChoreographedScenes();
   w->setupFades();
+  w->setupViewControls();
   w->setupAmbientSounds();
   w->setupSoundscapes();
   w->startIo();
@@ -1165,6 +1167,26 @@ void World::setupFades() {
   }
 }
 
+void World::setupViewControls() {
+  for (size_t i = 0; i < entityLump_.size(); ++i) {
+    if (!iequals(entityLump_[i].get("classname"), "point_viewcontrol")) continue;
+    const auto config = viewControlConfig(entityLump_[i]);
+    if (config) {
+      viewControls_.push_back({i, *config});
+      if (!entityLump_[i].get("target").empty() || !entityLump_[i].get("speed").empty() ||
+          !entityLump_[i].get("acceleration").empty() || !entityLump_[i].get("deceleration").empty() ||
+          !entityLump_[i].get("blendtime").empty())
+        ANVIL_WARN("entity", "point_viewcontrol %zu movement/blending is unsupported; using fixed authored camera", i);
+    } else ANVIL_WARN("entity", "point_viewcontrol %zu has invalid origin/angles/fov", i);
+  }
+}
+
+Camera World::viewCamera(const Camera& player) const {
+  if (!activeViewControl_ || *activeViewControl_ >= viewControls_.size()) return player;
+  const ViewControlConfig& view = viewControls_[*activeViewControl_].target;
+  return {view.origin, view.angles.x, view.angles.y, view.fov};
+}
+
 render::Batch2D World::fadeOverlay(uint32_t width, uint32_t height) const {
   render::Batch2D batch;
   if (!activeFade_ || !width || !height) return batch;
@@ -1256,6 +1278,44 @@ void World::deliverInput(const InputDelivery& delivery) {
     else if (iequals(delivery.input, "Enable") || iequals(delivery.input, "Disable"))
       io_->setEnabled(delivery.target, iequals(delivery.input, "Enable"));
     else warnOnce("Unsupported entity input logic_choreographed_scene." + delivery.input);
+  } else if (iequals(entity.get("classname"), "point_viewcontrol")) {
+    const auto found = std::find_if(viewControls_.begin(), viewControls_.end(),
+                                    [&](const ViewControl& item) { return item.entity == delivery.target; });
+    if (found == viewControls_.end()) warnOnce("point_viewcontrol has invalid authored properties");
+    else {
+      const size_t index = size_t(found - viewControls_.begin());
+      auto fire = [&](std::string_view output) {
+        std::string error;
+        if (!io_->fire(found->entity, output, ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
+          ANVIL_WARN("entity", "point_viewcontrol %zu %.*s: %s", found->entity, int(output.size()), output.data(), error.c_str());
+      };
+      if (iequals(delivery.input, "Enable")) {
+        if (activeViewControl_ && *activeViewControl_ != index) {
+          ViewControl& old = viewControls_[*activeViewControl_];
+          std::string error;
+          io_->fire(old.entity, "OnEnd", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error);
+        }
+        activeViewControl_ = index;
+        fire("OnStart");
+      } else if (iequals(delivery.input, "Disable")) {
+        if (activeViewControl_ == index) activeViewControl_.reset();
+        fire("OnEnd");
+      } else if (iequals(delivery.input, "SetAngles")) {
+        bsp::Vec3 angles{};
+        char extra = 0;
+        if (std::sscanf(delivery.parameter.c_str(), " %f %f %f %c", &angles.x, &angles.y, &angles.z, &extra) == 3 &&
+            std::isfinite(angles.x) && std::isfinite(angles.y) && std::isfinite(angles.z)) {
+          found->target.angles = angles;
+        } else warnOnce("point_viewcontrol SetAngles requires three finite numbers");
+      } else if (iequals(delivery.input, "SetFOV")) {
+        float value = 0;
+        const auto parsed = std::from_chars(delivery.parameter.data(), delivery.parameter.data() + delivery.parameter.size(), value);
+        if (parsed.ec == std::errc{} && parsed.ptr == delivery.parameter.data() + delivery.parameter.size() &&
+            std::isfinite(value) && value >= 1.0f && value <= 179.0f) {
+          found->target.fov = value;
+        } else warnOnce("point_viewcontrol input has invalid numeric parameter");
+      } else warnOnce("Unsupported entity input point_viewcontrol." + delivery.input);
+    }
   } else if (iequals(entity.get("classname"), "env_fade")) {
     const auto fade = std::find_if(fades_.begin(), fades_.end(),
                                    [&](const FadeEffect& item) { return item.entity == delivery.target; });
