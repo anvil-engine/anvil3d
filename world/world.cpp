@@ -476,8 +476,6 @@ void World::setupTriggers() {
 void World::startIo() {
   if (!io_) return;
   for (size_t i = 0; i < entityLump_.size(); ++i) {
-    if (io_->timerUsesRandomTime(i))
-      warnOnce("PARTIAL: logic_timer random intervals use authored RefireTime");
     if (!iequals(entityLump_[i].get("classname"), "logic_auto")) continue;
     std::string error;
     if (!io_->fire(i, "OnMapSpawn", ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); }, &error))

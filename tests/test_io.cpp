@@ -54,6 +54,7 @@ int main() {
       {{{"classname", "logic_timer"}, {"targetname", "timer"}, {"RefireTime", "0.5"},
         {"OnTimer", "sink,Tick,,0,-1"}}},
       {{{"classname", "logic_timer"}, {"StartDisabled", "1"}, {"UseRandomTime", "1"},
+        {"RefireTime", "10"}, {"LowerRandomBound", "0.25"}, {"UpperRandomBound", "0.25"},
         {"OnTimer", "sink,DisabledTick,,0,-1"}}},
       {{{"targetname", "sink"}}},
   };
@@ -69,7 +70,8 @@ int main() {
   CHECK(timerIo.tick(12, receive, &error) && delivered.size() == 2);
   CHECK(timerIo.input(0, "Enable", 12, receive, &error));
   CHECK(timerIo.tick(12.5, receive, &error) && delivered.size() == 3);
-  CHECK(timerIo.input(1, "FireTimer", 12.6, receive, &error) && delivered.size() == 4);
+  CHECK(timerIo.input(1, "Enable", 12.6, receive, &error));
+  CHECK(timerIo.tick(12.85, receive, &error) && delivered.size() == 4);
   CHECK(delivered.back().input == "DisabledTick");
   CHECK(!timerIo.input(0, "ResetTimer", 13, receive, &error) && !error.empty());
 

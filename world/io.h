@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <functional>
 #include <optional>
+#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -55,9 +56,13 @@ private:
   std::vector<std::vector<int>> remaining_;
   std::vector<Pending> pending_;
   std::vector<double> timerIntervals_;
+  std::vector<double> timerIntervalMaxes_;
   std::vector<std::optional<double>> nextTimer_;
   std::vector<bool> timerRandom_;
+  std::mt19937 timerRng_;
   bool started_ = false;
+
+  double timerInterval(size_t entity);
 };
 
 } // namespace anvil::world

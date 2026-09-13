@@ -28,7 +28,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
 - [ ] Execute authored skeletal animation; model poses/recoil must not be substituted on the game path.
 - [ ] Instantiate authored entities and generic delayed I/O (no map-specific event chains).
   - [x] Parse bounded target/input/parameter/delay/fire-count outputs, queue delayed deliveries, and dispatch `logic_auto` `OnMapSpawn` / `logic_relay` `Trigger`; honor `StartDisabled`, `Enable`, and `Disable`.
-  - [x] Start authored `logic_timer` entities from `RefireTime` (default 1), honor `StartDisabled`, dispatch `OnTimer`, and support `Enable`, `Disable`, and `FireTimer` with bounded catch-up; keep `UseRandomTime` explicitly PARTIAL.
+  - [x] Start authored `logic_timer` entities from interval bounds (default 1), honor `StartDisabled`, dispatch `OnTimer`, and support `Enable`, `Disable`, and `FireTimer` with bounded catch-up, including `UseRandomTime`.
   - [x] Implement `trigger_once` player overlap against transformed BSP convex hulls, including one-shot `OnStartTouch` and `Enable`/`Disable`.
   - [ ] Implement additional authored entity input handlers and entity behavior; other triggers and unsupported inputs remain visible warnings.
 - [ ] Original sound resources/scripts and audio playback.

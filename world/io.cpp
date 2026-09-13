@@ -69,20 +69,32 @@ EntityIo::EntityIo(const std::vector<bsp::Entity>& entities) : entities_(entitie
   enabled_.reserve(entities.size());
   remaining_.reserve(entities.size());
   timerIntervals_.reserve(entities.size());
+  timerIntervalMaxes_.reserve(entities.size());
   nextTimer_.resize(entities.size());
   timerRandom_.reserve(entities.size());
   for (const bsp::Entity& entity : entities) {
     enabled_.push_back(!equalInsensitive(entity.get("StartDisabled"), "1"));
     remaining_.emplace_back(entity.keys.size(), -2);
+    const bool random = equalInsensitive(entity.get("UseRandomTime"), "1");
     double interval = 1;
-    const std::string_view authored = entity.get("RefireTime");
+    const std::string_view authored = entity.get(random ? "LowerRandomBound" : "RefireTime");
     if (!authored.empty()) {
       const char* end = authored.data() + authored.size();
       const auto result = std::from_chars(authored.data(), end, interval);
       if (result.ec != std::errc{} || result.ptr != end || !std::isfinite(interval) || interval <= 0) interval = 0;
     }
     timerIntervals_.push_back(interval);
-    timerRandom_.push_back(equalInsensitive(entity.get("UseRandomTime"), "1"));
+    double maximum = interval;
+    if (random) {
+      const std::string_view upper = entity.get("UpperRandomBound");
+      if (!upper.empty()) {
+        const char* end = upper.data() + upper.size();
+        const auto result = std::from_chars(upper.data(), end, maximum);
+        if (result.ec != std::errc{} || result.ptr != end || !std::isfinite(maximum) || maximum < interval) maximum = 0;
+      }
+    }
+    timerIntervalMaxes_.push_back(maximum);
+    timerRandom_.push_back(random);
   }
 }
 
@@ -92,6 +104,11 @@ bool EntityIo::isTimer(size_t entity) const {
 
 bool EntityIo::timerUsesRandomTime(size_t entity) const { return isTimer(entity) && timerRandom_[entity]; }
 
+double EntityIo::timerInterval(size_t entity) {
+  if (!timerRandom_[entity]) return timerIntervals_[entity];
+  return std::uniform_real_distribution<double>(timerIntervals_[entity], timerIntervalMaxes_[entity])(timerRng_);
+}
+
 bool EntityIo::start(double now, std::string* error) {
   if (!std::isfinite(now)) {
     fail(error, "entity I/O start time must be finite");
@@ -99,11 +116,11 @@ bool EntityIo::start(double now, std::string* error) {
   }
   for (size_t i = 0; i < entities_.size(); ++i) {
     if (!isTimer(i)) continue;
-    if (timerIntervals_[i] <= 0) {
-      fail(error, "logic_timer RefireTime must be a finite positive number");
+    if (timerIntervals_[i] <= 0 || timerIntervalMaxes_[i] <= 0) {
+      fail(error, "logic_timer interval must be a finite positive number");
       return false;
     }
-    nextTimer_[i] = enabled_[i] ? std::optional<double>(now + timerIntervals_[i]) : std::nullopt;
+    nextTimer_[i] = enabled_[i] ? std::optional<double>(now + timerInterval(i)) : std::nullopt;
   }
   started_ = true;
   if (error) error->clear();
@@ -120,11 +137,13 @@ bool EntityIo::tick(double now, const Callback& callback, std::string* error) {
     size_t fired = 0;
     while (enabled_[i] && nextTimer_[i] && *nextTimer_[i] <= now && fired < kMaxCatchUp) {
       const double due = *nextTimer_[i];
-      nextTimer_[i] = due + timerIntervals_[i];
+      nextTimer_[i] = due + timerInterval(i);
       if (!fire(i, "OnTimer", due, callback, error)) return false;
       ++fired;
     }
-    if (nextTimer_[i] && *nextTimer_[i] <= now) {
+    if (timerRandom_[i] && nextTimer_[i] && *nextTimer_[i] <= now) {
+      nextTimer_[i] = now + timerInterval(i);
+    } else if (nextTimer_[i] && *nextTimer_[i] <= now) {
       const double missed = std::floor((now - *nextTimer_[i]) / timerIntervals_[i]) + 1;
       nextTimer_[i] = *nextTimer_[i] + missed * timerIntervals_[i];
     }
@@ -142,7 +161,7 @@ bool EntityIo::input(size_t entity, std::string_view inputName, double now, cons
   if (equalInsensitive(inputName, "Enable")) {
     if (!enabled_[entity]) {
       enabled_[entity] = true;
-      if (started_) nextTimer_[entity] = now + timerIntervals_[entity];
+      if (started_) nextTimer_[entity] = now + timerInterval(entity);
     }
   } else if (equalInsensitive(inputName, "Disable")) {
     enabled_[entity] = false;
