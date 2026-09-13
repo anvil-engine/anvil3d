@@ -457,6 +457,7 @@ int main(int argc, char** argv) {
     }
     clock.paused = menu.visible || !focused || (!diagnosticPlay && !inspectCaptured);
     const int ticks = clock.advance(wasMenu ? 0.0 : dt);
+    std::optional<std::string> nextLevel;
     const bool look = level && focused && !menu.visible && (diagnosticPlay || inspectCaptured) && (freeCamera ? window->mouseDown(2) : true);
     if (look != looking) window->setRelativeMouse(looking = look);
     if (level) {
@@ -491,6 +492,7 @@ int main(int argc, char** argv) {
           simulation->step(float(clock.tickInterval()), wish, jumpPending);
           level->tick(float(clock.tickInterval()), simulation.get());
           level->checkTriggers(*simulation);
+          if ((nextLevel = level->takePendingLevelChange())) break;
           jumpPending = false;
           camera.origin = simulation->playerFeet(); camera.origin.z += 64;
           if (diagnosticPlay) combat.step(float(clock.tickInterval()), {input && (mouse || firePending),reloadPending,selectPending}, *simulation,camera);
@@ -499,6 +501,11 @@ int main(int argc, char** argv) {
         camera.origin = simulation->playerFeet();
         camera.origin.z += 64;
       }
+    }
+    if (nextLevel) {
+      ANVIL_INFO("world", "trigger_changelevel: map %s", nextLevel->c_str());
+      console.execute("map " + *nextLevel);
+      last = SteadyClock::now();
     }
 
     const float clear[4] = {0.08f, 0.08f, 0.1f, 1.0f};

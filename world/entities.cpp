@@ -1,6 +1,7 @@
 #include "world/entities.h"
 
 #include "common/log.h"
+#include "filesystem/filesystem.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -107,6 +108,24 @@ bool linearDoorAllowsInput(bool enabled, bool locked, std::string_view input) {
   if (!enabled) return false;
   if (!locked) return true;
   return input != "Open" && input != "Toggle";
+}
+
+std::optional<std::string> normalizeMapName(std::string_view name) {
+  while (!name.empty() && std::isspace(static_cast<unsigned char>(name.front()))) name.remove_prefix(1);
+  while (!name.empty() && std::isspace(static_cast<unsigned char>(name.back()))) name.remove_suffix(1);
+  if (name.empty() || name.size() > 260) return std::nullopt;
+  for (char c : name)
+    if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == '.' || c == '/' || c == '\\'))
+      return std::nullopt;
+  auto path = normalizePath(name);
+  if (!path) return std::nullopt;
+  std::string out = *path;
+  std::transform(out.begin(), out.end(), out.begin(),
+                 [](unsigned char c) { return char(std::tolower(c)); });
+  if (out.starts_with("maps/")) out.erase(0, 5);
+  if (out.ends_with(".bsp")) out.resize(out.size() - 4);
+  if (out.empty()) return std::nullopt;
+  return out;
 }
 
 } // namespace anvil::world

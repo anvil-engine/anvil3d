@@ -58,9 +58,12 @@ render::Mat4 viewProjection(const Camera& camera, float aspect) {
 }
 
 std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::string_view name) {
-  std::string n = lower(name);
-  if (n.starts_with("maps/")) n.erase(0, 5);
-  if (n.ends_with(".bsp")) n.resize(n.size() - 4);
+  const auto normalized = normalizeMapName(name);
+  if (!normalized) {
+    ANVIL_ERROR("world", "Invalid map name");
+    return nullptr;
+  }
+  const std::string n = lower(*normalized);
   const std::string path = "maps/" + n + ".bsp";
   auto data = fs.readFile(path, "GAME");
   if (!data) {
@@ -579,13 +582,30 @@ void World::setupSky() {
 void World::setupTriggers() {
   for (const BrushEntity& entity : brushEntities(map_, entityLump_)) {
     const bool once = iequals(entity.classname, "trigger_once");
-    if (!once && !iequals(entity.classname, "trigger_multiple")) continue;
+    const bool changeLevel = iequals(entity.classname, "trigger_changelevel");
+    if (!once && !changeLevel && !iequals(entity.classname, "trigger_multiple")) continue;
     auto hulls = modelHulls(map_, entity.model, entity.transform);
     if (hulls.empty()) {
       ANVIL_WARN("entity", "%s %zu has no valid BSP hull", entity.classname.c_str(), entity.entity);
       continue;
     }
-    triggers_.push_back({entity.entity, std::move(hulls), once});
+    std::string target;
+    if (changeLevel) {
+      std::string_view authored = entityLump_[entity.entity].get("map");
+      if (authored.empty()) authored = entityLump_[entity.entity].get("mapname");
+      const auto normalized = normalizeMapName(authored);
+      if (!normalized) {
+        ANVIL_WARN("entity", "trigger_changelevel %zu has invalid map name", entity.entity);
+        continue;
+      }
+      target = *normalized;
+    }
+    Trigger trigger;
+    trigger.entity = entity.entity;
+    trigger.hulls = std::move(hulls);
+    trigger.once = once || changeLevel;
+    trigger.changeLevel = std::move(target);
+    triggers_.push_back(std::move(trigger));
   }
 }
 
@@ -608,7 +628,8 @@ void World::deliverInput(const InputDelivery& delivery) {
   }
   const auto& entity = entityLump_[delivery.target];
   const bool trigger = iequals(entity.get("classname"), "trigger_once") ||
-                       iequals(entity.get("classname"), "trigger_multiple");
+                       iequals(entity.get("classname"), "trigger_multiple") ||
+                       iequals(entity.get("classname"), "trigger_changelevel");
   if (iequals(entity.get("classname"), "func_door")) {
     auto door = std::find_if(doors_.begin(), doors_.end(), [&](const Door& item) { return item.entity == delivery.target; });
     if (iequals(delivery.input, "Enable") || iequals(delivery.input, "Disable")) {
@@ -733,7 +754,14 @@ void World::checkTriggers(const physics::Scene& scene) {
     }
     if (trigger.once) trigger.fired = true;
     else trigger.inside = true;
+    if (!trigger.changeLevel.empty() && !pendingLevelChange_) pendingLevelChange_ = trigger.changeLevel;
   }
+}
+
+std::optional<std::string> World::takePendingLevelChange() {
+  auto result = std::move(pendingLevelChange_);
+  pendingLevelChange_.reset();
+  return result;
 }
 
 void World::draw(const Camera& camera, float aspect, bool usePvs) {

@@ -403,6 +403,11 @@ int main(int argc, char** argv) {
     CHECK(!world::linearDoorAllowsInput(true, true, "Toggle"));
     CHECK(world::linearDoorAllowsInput(true, true, "Close"));
     CHECK(!world::linearDoorAllowsInput(false, false, "Open"));
+    CHECK(world::normalizeMapName("d1_trainstation_02") == "d1_trainstation_02");
+    CHECK(world::normalizeMapName(" maps\\D1_trainstation_02.bsp ") == "d1_trainstation_02");
+    CHECK(!world::normalizeMapName("../outside"));
+    CHECK(!world::normalizeMapName("d1_trainstation_02;quit"));
+    CHECK(!world::normalizeMapName(""));
   }
 
   // Static prop light: nearest ambient sample of the point's leaf, averaged over the 6 cube faces (linear).

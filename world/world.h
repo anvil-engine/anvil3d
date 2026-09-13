@@ -57,8 +57,10 @@ public:
   void tick(float dt, physics::Scene* scene = nullptr);
   // Adds authored moving brush hulls after the static map collision has been built.
   void attachPhysics(physics::Scene& scene);
-  // Fires authored trigger_once/trigger_multiple outputs when the player's real Jolt shape enters an authored BSP hull.
+  // Fires supported trigger behavior when the player's real Jolt shape enters an authored BSP hull.
   void checkTriggers(const physics::Scene& scene);
+  // Returns a trigger_changelevel request once, then clears it.
+  std::optional<std::string> takePendingLevelChange();
   const DrawStats& stats() const { return stats_; } // of the last draw()
   Camera spawnPoint() const;                           // first info_player_start at eye height, else origin
   const bsp::Map& map() const { return map_; }
@@ -109,8 +111,10 @@ private:
     bool once = false;
     bool fired = false;
     bool inside = false;
+    std::string changeLevel;
   };
   std::vector<Trigger> triggers_;
+  std::optional<std::string> pendingLevelChange_;
   enum class DoorState { Closed, Opening, Open, Closing };
   struct Door {
     size_t entity = 0, instance = 0;

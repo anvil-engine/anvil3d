@@ -46,4 +46,8 @@ std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bs
                                              const bsp::Vec3& maxs);
 bool linearDoorAllowsInput(bool enabled, bool locked, std::string_view input);
 
+// Normalizes a Source map name for the `map` command. Rejects paths that can escape the mounted game filesystem
+// or inject another console command.
+std::optional<std::string> normalizeMapName(std::string_view name);
+
 } // namespace anvil::world
