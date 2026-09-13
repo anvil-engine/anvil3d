@@ -569,7 +569,8 @@ void World::draw(const Camera& camera, float aspect, bool usePvs) {
   stats_.entities = entities_.size();
   entityVisible_.resize(entities_.size());
   for (size_t i = 0; i < entities_.size(); ++i) {
-    entityVisible_[i] = visibility_->visible(entities_[i].clusters, entities_[i].mins, entities_[i].maxs);
+    entityVisible_[i] = io_->enabled(entities_[i].entity.entity) &&
+                        visibility_->visible(entities_[i].clusters, entities_[i].mins, entities_[i].maxs);
     stats_.entitiesDrawn += entityVisible_[i];
   }
   stats_.props = props_.size();
