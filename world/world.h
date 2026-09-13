@@ -90,6 +90,7 @@ private:
   void setupSky();
   void setupTriggers();
   void setupDoors();
+  void setupButtons();
   void setupTrackTrains();
   void setupAmbientSounds();
   void playAmbient(size_t ambient);
@@ -141,7 +142,7 @@ private:
     bsp::Vec3 closed{}, open{}, current{};
     bsp::Vec3 closedAngles{}, openAngles{}, currentAngles{};
     float speed = 100, wait = 4;
-    bool rotating = false, toggle = false, locked = false, passable = false;
+    bool rotating = false, button = false, toggle = false, locked = false, passable = false;
     DoorState state = DoorState::Closed;
     double closeAt = -1;
     bool physicsDirty = false;

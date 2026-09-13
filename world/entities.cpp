@@ -76,8 +76,8 @@ std::vector<BrushEntity> brushEntities(const bsp::Map& map, const std::vector<bs
   return out;
 }
 
-std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bsp::Vec3& mins,
-                                             const bsp::Vec3& maxs) {
+static std::optional<LinearDoorMove> linearMove(const bsp::Entity& entity, const bsp::Vec3& mins,
+                                                const bsp::Vec3& maxs, float defaultLip) {
   bsp::Vec3 angles{};
   const std::string movedir(entity.get("movedir"));
   if (!movedir.empty() && std::sscanf(movedir.c_str(), "%f %f %f", &angles.x, &angles.y, &angles.z) != 3)
@@ -90,7 +90,7 @@ std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bs
     const float pitch = angles.x * kDeg, yaw = angles.y * kDeg;
     direction = {std::cos(pitch) * std::cos(yaw), std::cos(pitch) * std::sin(yaw), -std::sin(pitch)};
   }
-  float lip = 0;
+  float lip = defaultLip;
   const std::string_view authoredLip = entity.get("lip");
   if (!authoredLip.empty()) {
     const char* end = authoredLip.data() + authoredLip.size();
@@ -103,6 +103,16 @@ std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bs
                          std::abs(direction.z) * size.z - lip;
   if (!std::isfinite(distance) || distance < 0) return std::nullopt;
   return LinearDoorMove{direction, distance};
+}
+
+std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bsp::Vec3& mins,
+                                             const bsp::Vec3& maxs) {
+  return linearMove(entity, mins, maxs, 0);
+}
+
+std::optional<LinearDoorMove> linearButtonMove(const bsp::Entity& entity, const bsp::Vec3& mins,
+                                               const bsp::Vec3& maxs) {
+  return linearMove(entity, mins, maxs, 4);
 }
 
 std::optional<RotatingDoorMove> rotatingDoorMove(const bsp::Entity& entity) {

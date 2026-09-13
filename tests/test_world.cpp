@@ -398,6 +398,14 @@ int main(int argc, char** argv) {
     CHECK(up && near(up->direction.z, 1) && near(up->distance, 14));
     const auto badDoor = bsp::parseEntities(R"({ "classname" "func_door" "lip" "oops" })");
     CHECK(!world::linearDoorMove(badDoor[0], {0, 0, 0}, {64, 32, 16}));
+    const auto button = world::linearButtonMove(
+      bsp::parseEntities(R"({ "classname" "func_button" "movedir" "0 90 0" })")[0],
+      {0, 0, 0}, {64, 32, 16});
+    CHECK(button && near(button->direction.y, 1) && near(button->distance, 26));
+    const auto flushButton = world::linearButtonMove(
+      bsp::parseEntities(R"({ "classname" "func_button" "lip" "30" })")[0],
+      {0, 0, 0}, {32, 16, 8});
+    CHECK(flushButton && near(flushButton->distance, 0));
     const auto rotatingDoor = bsp::parseEntities(
       R"({ "classname" "func_door_rotating" "distance" "120" "spawnflags" "66" })");
     const auto rotation = world::rotatingDoorMove(rotatingDoor[0]);

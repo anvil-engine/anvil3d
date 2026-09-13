@@ -49,6 +49,9 @@ struct RotatingDoorMove {
 // Interprets func_door movedir/lip against the authored local brush bounds.
 std::optional<LinearDoorMove> linearDoorMove(const bsp::Entity& entity, const bsp::Vec3& mins,
                                              const bsp::Vec3& maxs);
+// Interprets func_button movement. Source buttons default to leaving four units outside the wall.
+std::optional<LinearDoorMove> linearButtonMove(const bsp::Entity& entity, const bsp::Vec3& mins,
+                                               const bsp::Vec3& maxs);
 // Interprets func_door_rotating axis flags, reverse direction and authored angular distance.
 std::optional<RotatingDoorMove> rotatingDoorMove(const bsp::Entity& entity);
 bool linearDoorAllowsInput(bool enabled, bool locked, std::string_view input);

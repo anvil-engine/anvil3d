@@ -195,6 +195,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   w->setupMaterials(mesh);
   w->setupEntities(mesh);
   w->setupDoors();
+  w->setupButtons();
   w->setupTrackTrains();
   w->setupProps();
   w->setupDynamicProps();
@@ -583,6 +584,54 @@ void World::setupDoors() {
   }
 }
 
+void World::setupButtons() {
+  for (size_t i = 0; i < entities_.size(); ++i) {
+    EntityInstance& instance = entities_[i];
+    if (!iequals(instance.entity.classname, "func_button")) continue;
+    const bsp::Entity& authored = entityLump_[instance.entity.entity];
+    const auto& model = map_.models[instance.entity.model];
+    const auto move = linearButtonMove(authored, model.mins, model.maxs);
+    if (!move) {
+      ANVIL_WARN("entity", "func_button %zu has invalid movedir/lip", instance.entity.entity);
+      continue;
+    }
+    Door button;
+    button.entity = instance.entity.entity;
+    button.instance = i;
+    button.button = true;
+    button.closed = instance.entity.transform.origin;
+    auto number = [&](std::string_view key, float fallback) {
+      const std::string_view text = authored.get(key);
+      if (text.empty()) return fallback;
+      float value = 0;
+      const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+      return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() && std::isfinite(value)
+               ? value : fallback;
+    };
+    button.speed = number("speed", 40);
+    button.wait = number("wait", 1);
+    if (button.speed <= 0) {
+      ANVIL_WARN("entity", "func_button %zu has invalid speed", button.entity);
+      continue;
+    }
+    int flags = 0;
+    const std::string_view flagText = authored.get("spawnflags");
+    if (!flagText.empty()) {
+      const auto parsed = std::from_chars(flagText.data(), flagText.data() + flagText.size(), flags);
+      if (parsed.ec != std::errc{} || parsed.ptr != flagText.data() + flagText.size()) flags = 0;
+    }
+    button.toggle = (flags & 32) != 0;
+    button.locked = (flags & 2048) != 0;
+    const float distance = (flags & 1) ? 0.0f : move->distance;
+    button.open = {button.closed.x + move->direction.x * distance,
+                   button.closed.y + move->direction.y * distance,
+                   button.closed.z + move->direction.z * distance};
+    button.current = button.closed;
+    doors_.push_back(std::move(button));
+    updateDoorPose(doors_.size() - 1, nullptr);
+  }
+}
+
 void World::setupTrackTrains() {
   auto number = [&](const bsp::Entity& entity, std::string_view key, float fallback) {
     const std::string_view text = entity.get(key);
@@ -634,7 +683,7 @@ void World::attachPhysics(physics::Scene& scene) {
     for (const auto& hull : modelHulls(map_, instance.entity.model, instance.entity.transform, true)) {
       const physics::Body body = scene.addKinematicHull(hull);
       if (body == physics::invalidBody) {
-        ANVIL_WARN("entity", "%s %zu has invalid collision hull", door.rotating ? "func_door_rotating" : "func_door",
+        ANVIL_WARN("entity", "%s %zu has invalid collision hull", door.button ? "func_button" : door.rotating ? "func_door_rotating" : "func_door",
                    door.entity);
         continue;
       }
@@ -699,7 +748,7 @@ void World::updateTrackTrainPose(size_t index, physics::Scene* scene) {
 void World::beginDoor(size_t entity, bool open) {
   const auto found = std::find_if(doors_.begin(), doors_.end(), [&](const Door& door) { return door.entity == entity; });
   if (found == doors_.end()) {
-    warnOnce("func_door has no drawable BSP model");
+    warnOnce("moving brush has no drawable BSP model");
     return;
   }
   if (!linearDoorAllowsInput(io_->enabled(entity), found->locked, open ? "Open" : "Close")) return;
@@ -708,9 +757,10 @@ void World::beginDoor(size_t entity, bool open) {
   found->state = open ? DoorState::Opening : DoorState::Closing;
   found->closeAt = -1;
   std::string error;
-  const char* output = open ? "OnOpen" : "OnClose";
+  const char* output = found->button ? (open ? "OnPressed" : nullptr) : (open ? "OnOpen" : "OnClose");
+  if (!output) return;
   if (!io_->fire(found->entity, output, ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
-    ANVIL_WARN("entity", "%s %zu %s: %s", found->rotating ? "func_door_rotating" : "func_door",
+    ANVIL_WARN("entity", "%s %zu %s: %s", found->button ? "func_button" : found->rotating ? "func_door_rotating" : "func_door",
                found->entity, output, error.c_str());
 }
 
@@ -969,6 +1019,19 @@ void World::deliverInput(const InputDelivery& delivery) {
         }
       }
     } else warnOnce("Unsupported entity input func_tracktrain." + delivery.input);
+  } else if (iequals(entity.get("classname"), "func_button")) {
+    auto button = std::find_if(doors_.begin(), doors_.end(), [&](const Door& item) {
+      return item.button && item.entity == delivery.target;
+    });
+    if (iequals(delivery.input, "Lock") || iequals(delivery.input, "Unlock")) {
+      if (button != doors_.end()) button->locked = iequals(delivery.input, "Lock");
+    } else if (iequals(delivery.input, "Use") || iequals(delivery.input, "Press")) {
+      if (button == doors_.end()) warnOnce("func_button has no drawable BSP model");
+      else if (linearDoorAllowsInput(io_->enabled(delivery.target), button->locked, "Open")) {
+        const bool press = !button->toggle || button->state == DoorState::Closed || button->state == DoorState::Closing;
+        beginDoor(delivery.target, press);
+      }
+    } else warnOnce("Unsupported entity input func_button." + delivery.input);
   } else if (iequals(entity.get("classname"), "func_door") || iequals(entity.get("classname"), "func_door_rotating")) {
     auto door = std::find_if(doors_.begin(), doors_.end(), [&](const Door& item) { return item.entity == delivery.target; });
     if (iequals(delivery.input, "Enable") || iequals(delivery.input, "Disable")) {
@@ -1066,9 +1129,9 @@ void World::tick(float dt, physics::Scene* scene) {
     door.state = opened ? DoorState::Open : DoorState::Closed;
     updateDoorPose(i, scene);
     std::string error;
-    const char* output = opened ? "OnFullyOpen" : "OnFullyClosed";
+    const char* output = door.button ? (opened ? "OnIn" : "OnOut") : (opened ? "OnFullyOpen" : "OnFullyClosed");
     if (!io_->fire(door.entity, output, ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
-      ANVIL_WARN("entity", "%s %zu %s: %s", door.rotating ? "func_door_rotating" : "func_door",
+      ANVIL_WARN("entity", "%s %zu %s: %s", door.button ? "func_button" : door.rotating ? "func_door_rotating" : "func_door",
                  door.entity, output, error.c_str());
     if (opened && !door.toggle && door.wait >= 0) door.closeAt = ioTime_ + door.wait;
   }

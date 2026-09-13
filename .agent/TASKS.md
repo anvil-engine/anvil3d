@@ -34,6 +34,7 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
   - [x] Implement generic linear `func_door` movement with authored Jolt hull synchronization, Open/Close/Toggle/Lock/Unlock/SetSpeed, wait timing, and lifecycle outputs.
   - [x] Implement generic `func_door_rotating` movement with authored axis flags/distance, synced kinematic collision, and the same common inputs/outputs.
   - [x] Implement generic `func_tracktrain` movement over linked `path_track` entities, with authored speed/height/orientation flags, I/O, and synced kinematic collision.
+  - [x] Implement generic `func_button` movement and authored `OnPressed` dispatch with synced kinematic collision.
   - [x] Implement generic `trigger_changelevel` player overlap, validated `map`/`mapname`, and one-shot map transition through the engine console.
   - [ ] Implement additional authored entity input handlers and entity behavior; remaining trigger classes and unsupported inputs remain visible warnings.
 - [x] Decode PCM WAV resources and play `ambient_generic` through SDL3 audio, including authored volume/pitch/radius/loop flags and common inputs.
