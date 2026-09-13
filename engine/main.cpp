@@ -8,6 +8,7 @@
 #include "filesystem/filesystem.h"
 #include "filesystem/gameinfo.h"
 #include "platform/window.h"
+#include "platform/audio.h"
 #include "world/world.h"
 #include "world/collision.h"
 #include "physics/physics.h"
@@ -79,6 +80,8 @@ int main(int argc, char** argv) {
   FileSystem fsys;
   if (!mountGame(cmdline, fsys)) return 1;
 
+  std::unique_ptr<platform::Audio> audio;
+  if (!cmdline.has("-nosound")) audio = platform::Audio::create();
   std::unique_ptr<render::Device> device;
   std::unique_ptr<world::World> level; // destroyed before the device (see shutdown)
   world::Camera camera;
@@ -119,7 +122,7 @@ int main(int argc, char** argv) {
     if (a.size() < 2) return ANVIL_WARN("console", "usage: map <name>");
     simulation.reset();
     level.reset(); // unmounts the previous map's pakfile before the next one mounts
-    level = world::World::load(fsys, device.get(), a[1]);
+    level = world::World::load(fsys, device.get(), a[1], audio.get());
     if (level) {
       camera = level->spawnPoint();
       simulation = std::make_unique<physics::Scene>(physicsRuntime);
@@ -507,6 +510,7 @@ int main(int argc, char** argv) {
       console.execute("map " + *nextLevel);
       last = SteadyClock::now();
     }
+    if (level) level->updateAudio(camera);
 
     const float clear[4] = {0.08f, 0.08f, 0.1f, 1.0f};
     if (device && device->beginFrame(clear)) {

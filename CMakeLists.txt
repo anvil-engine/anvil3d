@@ -19,14 +19,14 @@ add_library(anvil_common STATIC common/log.cpp common/cmdline.cpp common/keyvalu
 target_include_directories(anvil_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # SDL3 is private: nothing outside platform/ may include SDL headers.
-add_library(anvil_platform STATIC platform/window.cpp platform/module.cpp)
+add_library(anvil_platform STATIC platform/window.cpp platform/module.cpp platform/audio.cpp)
 target_link_libraries(anvil_platform PUBLIC anvil_common PRIVATE SDL3::SDL3)
 
 add_library(anvil_filesystem STATIC filesystem/filesystem.cpp filesystem/gameinfo.cpp filesystem/vpk.cpp filesystem/zip.cpp)
 target_link_libraries(anvil_filesystem PUBLIC anvil_common)
 
 # Format parsers: pure functions over bytes, no I/O, no engine state.
-add_library(anvil_formats STATIC formats/bsp.cpp formats/vtf.cpp formats/vmt.cpp formats/studio.cpp formats/weapon.cpp)
+add_library(anvil_formats STATIC formats/bsp.cpp formats/vtf.cpp formats/vmt.cpp formats/studio.cpp formats/weapon.cpp formats/wav.cpp)
 target_link_libraries(anvil_formats PUBLIC anvil_common)
 
 add_library(anvil_physics STATIC physics/physics.cpp)
@@ -89,11 +89,11 @@ if(APPLE)
 endif()
 
 enable_testing()
-foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio weapon textures world io console devui render swapchain interfaces physics gameplay vgui)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio weapon wav textures world io console devui render swapchain interfaces physics gameplay vgui)
   add_executable(test_${name} tests/test_${name}.cpp)
   target_link_libraries(test_${name} PRIVATE anvil_engine)
 endforeach()
-foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio weapon textures world io console devui render swapchain physics gameplay vgui)
+foreach(name cmdline keyvalues filesystem vpk zip bsp vtf vmt studio weapon wav textures world io console devui render swapchain physics gameplay vgui)
   add_test(NAME ${name} COMMAND test_${name})
 endforeach()
 # GPU tests: 77 = skipped (no Vulkan / no display); any validation-layer message fails the test.

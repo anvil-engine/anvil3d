@@ -6,7 +6,9 @@
 #include "filesystem/zip.h"
 #include "formats/vmt.h"
 #include "formats/vtf.h"
+#include "formats/wav.h"
 #include "materials/texture.h"
+#include "platform/audio.h"
 #include "world/sky.h"
 #include "world/collision.h"
 #include "world/worldmesh.h"
@@ -16,6 +18,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <optional>
 #include <set>
@@ -103,7 +106,8 @@ render::Mat4 viewProjection(const Camera& camera, float aspect) {
   return render::perspective(fovY, aspect, 4.0f) * view;
 }
 
-std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::string_view name) {
+std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::string_view name,
+                                   platform::Audio* audio) {
   const auto normalized = normalizeMapName(name);
   if (!normalized) {
     ANVIL_ERROR("world", "Invalid map name");
@@ -123,6 +127,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
     return nullptr;
   }
   std::unique_ptr<World> w(new World(fs, device));
+  w->audio_ = audio;
   w->map_ = std::move(*map);
   w->entityLump_ = bsp::parseEntities(w->map_.entities);
   if (!w->map_.pakfile.empty()) {
@@ -161,6 +166,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
   w->setupSky();
   w->setupTriggers();
   w->io_ = std::make_unique<EntityIo>(w->entityLump_);
+  w->setupAmbientSounds();
   w->startIo();
   std::string ioError;
   if (!w->io_->start(w->ioTime_, &ioError)) ANVIL_WARN("entity", "logic_timer: %s", ioError.c_str());
@@ -173,6 +179,7 @@ std::unique_ptr<World> World::load(FileSystem& fs, render::Device* device, std::
 }
 
 World::~World() {
+  if (audio_) for (const AmbientSound& sound : ambientSounds_) audio_->stop(sound.voice);
   if (device_) {
     std::set<render::TextureHandle> unique{lightmap_, error_};
     for (const auto& [path, handle] : textures_) unique.insert(handle);
@@ -744,6 +751,96 @@ void World::setupTriggers() {
   }
 }
 
+void World::setupAmbientSounds() {
+  if (!audio_) {
+    for (const bsp::Entity& entity : entityLump_)
+      if (iequals(entity.get("classname"), "ambient_generic")) {
+        warnOnce("ambient_generic audio unavailable: no playback device");
+        break;
+      }
+    return;
+  }
+  for (size_t i = 0; i < entityLump_.size(); ++i) {
+    const bsp::Entity& entity = entityLump_[i];
+    if (!iequals(entity.get("classname"), "ambient_generic")) continue;
+    std::string message(entity.get("message"));
+    while (!message.empty() && std::strchr("*#@<>^)}$!?", message.front())) message.erase(message.begin());
+    if (message.empty()) {
+      warnOnce("ambient_generic " + std::to_string(i) + " has no sound");
+      continue;
+    }
+    std::string path = lower(message);
+    if (!path.ends_with(".wav")) {
+      warnOnce("Unsupported ambient_generic sound script: " + message);
+      continue;
+    }
+    if (!path.starts_with("sound/")) path = "sound/" + path;
+    const auto normalized = normalizePath(path);
+    const auto bytes = normalized ? fs_.readFile(*normalized, "GAME") : std::nullopt;
+    if (!bytes) {
+      warnOnce("Missing ambient_generic WAV: " + path);
+      continue;
+    }
+    std::string error;
+    auto decoded = wav::decode(*bytes, &error);
+    if (!decoded) {
+      warnOnce("ambient_generic " + path + ": " + error);
+      continue;
+    }
+
+    int flags = 0;
+    const std::string_view authoredFlags = entity.get("spawnflags");
+    if (!authoredFlags.empty()) {
+      const auto parsed = std::from_chars(authoredFlags.data(), authoredFlags.data() + authoredFlags.size(), flags);
+      if (parsed.ec != std::errc{} || parsed.ptr != authoredFlags.data() + authoredFlags.size()) flags = 0;
+    }
+    auto number = [&](std::string_view key, float fallback) {
+      const std::string_view text = entity.get(key);
+      if (text.empty()) return fallback;
+      float value = fallback;
+      const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+      return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() && std::isfinite(value)
+               ? value : fallback;
+    };
+    AmbientSound sound;
+    sound.entity = i;
+    sound.origin = entityOrigin(entity).value_or(bsp::Vec3{});
+    sound.path = std::move(path);
+    sound.samples = std::move(decoded->samples);
+    sound.sampleRate = decoded->sampleRate;
+    sound.channels = decoded->channels;
+    sound.volume = std::clamp(number("health", 10.0f) / 10.0f, 0.0f, 1.0f);
+    sound.pitch = std::clamp(number("pitch", 100.0f) / 100.0f, 0.01f, 2.55f);
+    sound.everywhere = (flags & 1) != 0;
+    sound.radius = (flags & 2) ? 800.0f : (flags & 4) ? 1250.0f : (flags & 8) ? 2000.0f : 1250.0f;
+    sound.looping = (flags & 32) == 0;
+    const bool startSilent = (flags & 16) != 0;
+    ambientSounds_.push_back(std::move(sound));
+    if (!startSilent) playAmbient(ambientSounds_.size() - 1);
+  }
+}
+
+void World::playAmbient(size_t index) {
+  if (!audio_ || index >= ambientSounds_.size()) return;
+  AmbientSound& sound = ambientSounds_[index];
+  if (sound.voice) audio_->stop(sound.voice);
+  platform::Audio::Params params;
+  params.x = sound.origin.x; params.y = sound.origin.y; params.z = sound.origin.z;
+  params.volume = sound.volume; params.pitch = sound.pitch; params.radius = sound.radius;
+  params.looping = sound.looping; params.everywhere = sound.everywhere;
+  sound.voice = audio_->play(sound.samples, sound.sampleRate, sound.channels, params);
+}
+
+void World::stopAmbient(size_t index) {
+  if (!audio_ || index >= ambientSounds_.size()) return;
+  audio_->stop(ambientSounds_[index].voice);
+  ambientSounds_[index].voice = 0;
+}
+
+void World::updateAudio(const Camera& listener) {
+  if (audio_) audio_->update(listener.origin.x, listener.origin.y, listener.origin.z);
+}
+
 void World::startIo() {
   if (!io_) return;
   for (size_t i = 0; i < entityLump_.size(); ++i) {
@@ -765,7 +862,37 @@ void World::deliverInput(const InputDelivery& delivery) {
   const bool trigger = iequals(entity.get("classname"), "trigger_once") ||
                        iequals(entity.get("classname"), "trigger_multiple") ||
                        iequals(entity.get("classname"), "trigger_changelevel");
-  if (iequals(entity.get("classname"), "func_tracktrain")) {
+  if (iequals(entity.get("classname"), "ambient_generic")) {
+    const auto found = std::find_if(ambientSounds_.begin(), ambientSounds_.end(),
+                                    [&](const AmbientSound& sound) { return sound.entity == delivery.target; });
+    if (found == ambientSounds_.end()) warnOnce("ambient_generic has no playable WAV");
+    else {
+      const size_t index = size_t(found - ambientSounds_.begin());
+      if (iequals(delivery.input, "Start") || iequals(delivery.input, "PlaySound")) playAmbient(index);
+      else if (iequals(delivery.input, "Stop") || iequals(delivery.input, "StopSound")) stopAmbient(index);
+      else if (iequals(delivery.input, "Toggle") || iequals(delivery.input, "ToggleSound")) {
+        if (found->voice) stopAmbient(index); else playAmbient(index);
+      } else if (iequals(delivery.input, "Volume") || iequals(delivery.input, "SetVolume")) {
+        float volume = 0;
+        const auto parsed = std::from_chars(delivery.parameter.data(), delivery.parameter.data() + delivery.parameter.size(), volume);
+        if (parsed.ec != std::errc{} || parsed.ptr != delivery.parameter.data() + delivery.parameter.size() ||
+            !std::isfinite(volume)) warnOnce("ambient_generic Volume requires a finite number");
+        else {
+          found->volume = std::clamp(volume / 10.0f, 0.0f, 1.0f);
+          audio_->setVolume(found->voice, found->volume);
+        }
+      } else if (iequals(delivery.input, "Pitch") || iequals(delivery.input, "SetPitch")) {
+        float pitch = 0;
+        const auto parsed = std::from_chars(delivery.parameter.data(), delivery.parameter.data() + delivery.parameter.size(), pitch);
+        if (parsed.ec != std::errc{} || parsed.ptr != delivery.parameter.data() + delivery.parameter.size() ||
+            !std::isfinite(pitch)) warnOnce("ambient_generic Pitch requires a finite number");
+        else {
+          found->pitch = std::clamp(pitch / 100.0f, 0.01f, 2.55f);
+          audio_->setPitch(found->voice, found->pitch);
+        }
+      } else warnOnce("Unsupported entity input ambient_generic." + delivery.input);
+    }
+  } else if (iequals(entity.get("classname"), "func_tracktrain")) {
     auto train = std::find_if(trackTrains_.begin(), trackTrains_.end(),
                               [&](const TrackTrain& item) { return item.entity == delivery.target; });
     if (train == trackTrains_.end()) warnOnce("func_tracktrain has no drawable BSP model or valid path");

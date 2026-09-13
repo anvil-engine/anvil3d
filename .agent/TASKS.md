@@ -36,7 +36,8 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
   - [x] Implement generic `func_tracktrain` movement over linked `path_track` entities, with authored speed/height/orientation flags, I/O, and synced kinematic collision.
   - [x] Implement generic `trigger_changelevel` player overlap, validated `map`/`mapname`, and one-shot map transition through the engine console.
   - [ ] Implement additional authored entity input handlers and entity behavior; remaining trigger classes and unsupported inputs remain visible warnings.
-- [ ] Original sound resources/scripts and audio playback.
+- [x] Decode PCM WAV resources and play `ambient_generic` through SDL3 audio, including authored volume/pitch/radius/loop flags and common inputs.
+- [ ] Source sound scripts (`scripts/game_sounds*.txt`) and broader sound playback semantics.
 - [ ] PHY collision, entity physics/parenting, Source movement semantics, triggers and progression driven by map data.
 - [ ] Resolve game module/ABI path for original game-specific behavior; the retail mac i386 modules cannot load into this arm64 runtime.
 - [ ] Modern renderer features remain a separate track; named algorithms require actual implementations and configuration.

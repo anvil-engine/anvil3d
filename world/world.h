@@ -21,6 +21,7 @@ namespace anvil {
 class Archive;
 class FileSystem;
 } // namespace anvil
+namespace anvil::platform { class Audio; }
 namespace anvil::world {
 
 // Source camera: world units, z up; degrees, pitch > 0 looks down, yaw > 0 turns left (toward +y).
@@ -46,7 +47,8 @@ public:
   // Reads maps/<name>.bsp (path ID GAME) and mounts its pakfile at the head of the search path (IDs GAME, BSP)
   // for the World's lifetime. `device` null = CPU only: nothing is uploaded, material files are still resolved.
   // Null (logged) if the map is missing or malformed. The World must not outlive `fs` or `device`.
-  static std::unique_ptr<World> load(FileSystem& fs, render::Device* device, std::string_view name);
+  static std::unique_ptr<World> load(FileSystem& fs, render::Device* device, std::string_view name,
+                                     platform::Audio* audio = nullptr);
   ~World();
   World(const World&) = delete;
   World& operator=(const World&) = delete;
@@ -59,6 +61,7 @@ public:
   void attachPhysics(physics::Scene& scene);
   // Fires supported trigger behavior when the player's real Jolt shape enters an authored BSP hull.
   void checkTriggers(const physics::Scene& scene);
+  void updateAudio(const Camera& listener);
   // Returns a trigger_changelevel request once, then clears it.
   std::optional<std::string> takePendingLevelChange();
   const DrawStats& stats() const { return stats_; } // of the last draw()
@@ -88,6 +91,9 @@ private:
   void setupTriggers();
   void setupDoors();
   void setupTrackTrains();
+  void setupAmbientSounds();
+  void playAmbient(size_t ambient);
+  void stopAmbient(size_t ambient);
   void startIo();
   void deliverInput(const InputDelivery& delivery);
   void beginDoor(size_t entity, bool open);
@@ -98,6 +104,7 @@ private:
 
   FileSystem& fs_;
   render::Device* device_;
+  platform::Audio* audio_ = nullptr;
   bsp::Map map_;
   const Archive* pak_ = nullptr;
   render::MeshHandle mesh_ = 0;
@@ -117,6 +124,17 @@ private:
   };
   std::vector<Trigger> triggers_;
   std::optional<std::string> pendingLevelChange_;
+  struct AmbientSound {
+    size_t entity = 0;
+    bsp::Vec3 origin{};
+    std::string path;
+    std::vector<float> samples;
+    uint32_t sampleRate = 0, voice = 0;
+    uint16_t channels = 0;
+    float volume = 1, pitch = 1, radius = 1250;
+    bool looping = false, everywhere = false;
+  };
+  std::vector<AmbientSound> ambientSounds_;
   enum class DoorState { Closed, Opening, Open, Closing };
   struct Door {
     size_t entity = 0, instance = 0;
