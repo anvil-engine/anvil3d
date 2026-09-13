@@ -128,7 +128,7 @@ int main(int argc,char** argv) {
     Colors { Paper "10 20 30 40" Alias "Paper" Transparent "0 0 0 0" Panel.FgColor "Paper" Bad "256 0 0 255" }
     BaseSettings {
       "Label.TextColor" "Alias" "Label.BgColor" "Transparent"
-      "Button.TextColor" "Label.TextColor" "Button.BgColor" "Transparent"
+      "Button.TextColor" "Label.TextColor" "Button.DisabledTextColor" "Paper" "Button.BgColor" "Transparent"
       "Panel.BgColor" "Transparent" A "b" B "A"
     }
     Fonts { Default {
@@ -152,6 +152,15 @@ int main(int argc,char** argv) {
   })";
   vgui::Scheme scheme;
   CHECK(scheme.load(fs,"resource/scheme.res",&error));
+  vgui::PanelResource disabled;
+  disabled.id="Disabled"; disabled.controlName="Button"; disabled.label="Unavailable";
+  disabled.wide.mode=vgui::LayoutMode::Near; disabled.wide.offset=80;
+  disabled.tall.mode=vgui::LayoutMode::Near; disabled.tall.offset=24;
+  disabled.enabled=false;
+  auto disabledRuntime=vgui::PanelRuntime::instantiate({disabled},640,480,&error);
+  auto disabledPaint=disabledRuntime?disabledRuntime->paint(scheme,&error):std::nullopt;
+  CHECK(disabledPaint&&disabledPaint->text.size()==1&&
+        (disabledPaint->text[0].color==vgui::Color{10,20,30,40}));
   CHECK(scheme.setting("label.textcolor")=="Alias");
   CHECK((scheme.color("Button.TextColor")==vgui::Color{10,20,30,40}));
   CHECK((scheme.color("Transparent")==vgui::Color{0,0,0,0}));
