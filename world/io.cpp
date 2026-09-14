@@ -1,5 +1,6 @@
 #include "world/io.h"
 
+#include <algorithm>
 #include <charconv>
 #include <cmath>
 #include <cctype>
@@ -419,6 +420,14 @@ void EntityIo::dispatch(double now, const Callback& callback) {
     }
   }
   pending_.resize(keep);
+}
+
+bool EntityIo::cancelPending(size_t source) {
+  if (source >= entities_.size()) return false;
+  pending_.erase(std::remove_if(pending_.begin(), pending_.end(),
+                                [source](const Pending& pending) { return pending.delivery.source == source; }),
+                 pending_.end());
+  return true;
 }
 
 } // namespace anvil::world

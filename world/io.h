@@ -43,6 +43,7 @@ public:
   bool fire(size_t source, std::string_view output, double now, const Callback& callback,
             std::string* error = nullptr, std::string_view value = {});
   void dispatch(double now, const Callback& callback);
+  bool cancelPending(size_t source);
   bool isTimer(size_t entity) const;
   bool timerUsesRandomTime(size_t entity) const;
   bool enabled(size_t entity) const;

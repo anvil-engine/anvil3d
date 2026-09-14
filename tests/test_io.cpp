@@ -40,6 +40,11 @@ int main() {
   io.dispatch(21.0, receive);
   CHECK(delivered.size() == 5);
 
+  CHECK(io.fire(0, "OnTrigger", 30.0, receive, &error));
+  CHECK(io.cancelPending(0));
+  io.dispatch(31.0, receive);
+  CHECK(delivered.size() == 7);
+
   entities[0].keys.push_back({"StartDisabled", "1"});
   world::EntityIo disabled(entities);
   CHECK(!disabled.enabled(0));
