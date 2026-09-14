@@ -50,6 +50,8 @@ int main() {
   CHECK(!disabled.enabled(0));
   CHECK(disabled.setEnabled(0, true) && disabled.enabled(0));
   CHECK(!disabled.setEnabled(99, true));
+  CHECK(disabled.setEnabled(0, false) && !disabled.enabled(0));
+  CHECK(disabled.setEnabled(0, true) && disabled.enabled(0));
 
   std::vector<bsp::Entity> buttons = {{{{"classname", "func_button"}}}};
   world::EntityIo buttonIo(buttons);

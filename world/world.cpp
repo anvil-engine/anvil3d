@@ -1573,6 +1573,8 @@ void World::deliverInput(const InputDelivery& delivery) {
     io_->setEnabled(delivery.target, true);
   } else if (trigger && iequals(delivery.input, "Disable")) {
     io_->setEnabled(delivery.target, false);
+  } else if (trigger && iequals(delivery.input, "Toggle")) {
+    io_->setEnabled(delivery.target, !io_->enabled(delivery.target));
   } else if ((iequals(entity.get("classname"), "prop_dynamic") || supportedVisualNpcClass(entity.get("classname"))) &&
              iequals(delivery.input, "Enable")) {
     io_->setEnabled(delivery.target, true);
