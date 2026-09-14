@@ -252,13 +252,15 @@ bool EntityIo::input(size_t entity, std::string_view inputName, std::string_view
       fail(error, "logic_branch InitialValue must be a finite number");
       return false;
     }
-    if (equalInsensitive(inputName, "SetValue")) {
+    if (equalInsensitive(inputName, "SetValue") || equalInsensitive(inputName, "SetValueTest")) {
       double value = 0;
       if (!parseNumber(parameter, value)) {
         fail(error, "logic_branch SetValue requires a finite number");
         return false;
       }
       values_[entity] = value != 0;
+      if (equalInsensitive(inputName, "SetValueTest"))
+        return fire(entity, values_[entity] != 0 ? "OnTrue" : "OnFalse", now, callback, error);
     } else if (equalInsensitive(inputName, "Toggle")) {
       values_[entity] = values_[entity] == 0;
     } else if (equalInsensitive(inputName, "Test")) {

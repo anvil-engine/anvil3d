@@ -126,9 +126,11 @@ int main() {
   CHECK(logicIo.input(0, "SetValue", "2", 0, receive, &error));
   CHECK(logicIo.input(0, "Test", "", 0, receive, &error));
   CHECK(delivered.back().input == "True");
+  CHECK(logicIo.input(0, "SetValueTest", "0", 0, receive, &error));
+  CHECK(delivered.back().input == "False");
   CHECK(logicIo.input(0, "Toggle", "", 0, receive, &error));
   CHECK(logicIo.input(0, "Test", "", 0, receive, &error));
-  CHECK(delivered.back().input == "False");
+  CHECK(delivered.back().input == "True");
   CHECK(!logicIo.input(0, "SetValue", "nan", 0, receive, &error) && !error.empty());
 
   CHECK(logicIo.input(1, "GetValue", "", 0, receive, &error));
