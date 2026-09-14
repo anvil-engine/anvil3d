@@ -88,6 +88,7 @@ bool linearDoorAllowsInput(bool enabled, bool locked, std::string_view input);
 std::optional<BreakableConfig> breakableConfig(const bsp::Entity& entity);
 // Applies valid damage and reports whether health reached zero.
 bool applyBreakableDamage(float& health, bool damageable, float damage);
+bool setBreakableHealth(float& health, std::string_view value);
 
 // NPC classes whose explicitly authored studio model can be shown safely without implying AI support.
 bool supportedVisualNpcClass(std::string_view classname);

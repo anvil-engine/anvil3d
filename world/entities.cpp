@@ -176,6 +176,16 @@ bool applyBreakableDamage(float& health, bool damageable, float damage) {
   return health <= 0;
 }
 
+bool setBreakableHealth(float& health, std::string_view value) {
+  float next = 0;
+  const auto parsed = std::from_chars(value.data(), value.data() + value.size(), next);
+  if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() ||
+      !std::isfinite(next) || next <= 0)
+    return false;
+  health = next;
+  return true;
+}
+
 bool supportedVisualNpcClass(std::string_view classname) {
   static constexpr std::string_view kClasses[] = {
     "npc_alyx", "npc_barney", "npc_breen", "npc_citizen", "npc_combine_s", "npc_eli",

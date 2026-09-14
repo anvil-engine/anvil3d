@@ -448,6 +448,9 @@ int main(int argc, char** argv) {
     breakableHealth = 25;
     CHECK(!world::applyBreakableDamage(breakableHealth, false, 100) && near(breakableHealth, 25));
     CHECK(!world::applyBreakableDamage(breakableHealth, true, -1) && near(breakableHealth, 25));
+    CHECK(world::setBreakableHealth(breakableHealth, "7.5") && near(breakableHealth, 7.5f));
+    CHECK(!world::setBreakableHealth(breakableHealth, "nan") && near(breakableHealth, 7.5f));
+    CHECK(!world::setBreakableHealth(breakableHealth, "0") && near(breakableHealth, 7.5f));
     CHECK(!world::breakableConfig(bsp::parseEntities(R"({ "classname" "func_breakable" "health" "nan" })")[0]));
     CHECK(!world::breakableConfig(bsp::parseEntities(R"({ "classname" "func_breakable" "material" "99" })")[0]));
     CHECK(world::supportedVisualNpcClass("npc_citizen"));

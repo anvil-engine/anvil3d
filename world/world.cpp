@@ -1509,6 +1509,9 @@ void World::deliverInput(const InputDelivery& delivery) {
       else if (io_->enabled(delivery.target) &&
                applyBreakableDamage(found->health, found->damageable, damage))
         breakEntity(delivery.target);
+    } else if (iequals(delivery.input, "SetHealth")) {
+      if (!setBreakableHealth(found->health, delivery.parameter))
+        warnOnce("func_breakable SetHealth requires a finite positive number");
     } else warnOnce("Unsupported entity input func_breakable." + delivery.input);
   } else if (iequals(entity.get("classname"), "func_door") || iequals(entity.get("classname"), "func_door_rotating")) {
     auto door = std::find_if(doors_.begin(), doors_.end(), [&](const Door& item) { return item.entity == delivery.target; });
