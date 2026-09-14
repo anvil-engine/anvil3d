@@ -182,8 +182,10 @@ int main() {
   CHECK(compareIo.input(0, "SetValue", "4", 0, receive, &error));
   CHECK(compareIo.input(0, "Compare", "", 0, receive, &error) && delivered.size() == 4 &&
         delivered[2].input == "NotEqual" && delivered[3].input == "Greater");
+  CHECK(compareIo.input(0, "SetValueTest", "3", 0, receive, &error) && delivered.size() == 5 &&
+        delivered.back().input == "Equal");
   CHECK(compareIo.input(0, "SetCompareValue", "4", 0, receive, &error));
-  CHECK(compareIo.input(0, "Compare", "", 0, receive, &error) && delivered.size() == 5 && delivered.back().input == "Equal");
+  CHECK(compareIo.input(0, "Compare", "", 0, receive, &error) && delivered.size() == 7 && delivered.back().input == "Less");
   CHECK(!compareIo.input(0, "SetValue", "inf", 0, receive, &error) && !error.empty());
 
   return TEST_RESULT();

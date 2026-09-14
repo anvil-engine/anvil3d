@@ -300,14 +300,17 @@ bool EntityIo::input(size_t entity, std::string_view inputName, std::string_view
       fail(error, "logic_compare values must be finite numbers");
       return false;
     }
-    if (equalInsensitive(inputName, "SetValue") || equalInsensitive(inputName, "SetCompareValue")) {
+    const bool setValueTest = equalInsensitive(inputName, "SetValueTest");
+    if (equalInsensitive(inputName, "SetValue") || setValueTest || equalInsensitive(inputName, "SetCompareValue")) {
       double value = 0;
       if (!parseNumber(parameter, value)) {
         fail(error, "logic_compare input requires a finite number");
         return false;
       }
-      (equalInsensitive(inputName, "SetValue") ? values_ : compareValues_)[entity] = value;
-    } else if (equalInsensitive(inputName, "Compare")) {
+      (equalInsensitive(inputName, "SetCompareValue") ? compareValues_ : values_)[entity] = value;
+      if (!setValueTest) return true;
+    }
+    if (setValueTest || equalInsensitive(inputName, "Compare")) {
       if (values_[entity] == compareValues_[entity]) return fire(entity, "OnEqual", now, callback, error);
       if (!fire(entity, "OnNotEqual", now, callback, error)) return false;
       return fire(entity, values_[entity] > compareValues_[entity] ? "OnGreaterThan" : "OnLessThan", now, callback,
