@@ -1426,6 +1426,23 @@ void World::deliverInput(const InputDelivery& delivery) {
       io_->setEnabled(delivery.target, true);
       forcedSoundscape_ = true;
       activateSoundscape(size_t(found - soundscapes_.begin()));
+    } else if (iequals(delivery.input, "SetRadius")) {
+      float radius = 0;
+      const auto parsed = std::from_chars(delivery.parameter.data(), delivery.parameter.data() + delivery.parameter.size(), radius);
+      if (parsed.ec != std::errc{} || parsed.ptr != delivery.parameter.data() + delivery.parameter.size() ||
+          !std::isfinite(radius) || radius <= 0)
+        warnOnce("env_soundscape SetRadius requires a finite positive number");
+      else {
+        found->radius = radius;
+        for (const size_t sound : found->sounds) {
+          if (sound >= ambientSounds_.size()) continue;
+          ambientSounds_[sound].radius = radius;
+          if (ambientSounds_[sound].voice) {
+            stopAmbient(sound);
+            playAmbient(sound);
+          }
+        }
+      }
     } else warnOnce("Unsupported entity input env_soundscape." + delivery.input);
   } else if (iequals(entity.get("classname"), "func_tracktrain")) {
     auto train = std::find_if(trackTrains_.begin(), trackTrains_.end(),
