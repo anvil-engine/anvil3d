@@ -431,6 +431,7 @@ std::optional<render::Draw3D> World::material(const std::string& path, bool prop
   } else if (shader != "lightmappedgeneric") {
     warnOnce("PARTIAL: shader " + m->shader + " drawn as LightmappedGeneric");
   }
+  d.selfIllum = m->flag("$selfillum");
   const std::string_view base = m->get("$basetexture");
   if (lower(base).starts_with("_rt_")) { // engine render target (e.g. func_monitor camera), not a file
     warnOnce("STUB: render-target textures (" + std::string(base) + ") not implemented; surfaces not drawn");

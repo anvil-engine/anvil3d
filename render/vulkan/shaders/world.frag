@@ -20,5 +20,7 @@ void main() {
   if (pc.params.w > 0.0) base = texture(tex2, uv);
   else if (pc.params.z > 0.0) base = mix(base, texture(tex2, uv), clamp(blend, 0.0, 1.0));
   if (base.a < pc.params.y) discard;
-  outColor = vec4(base.rgb * texture(lightmap, lightmapUV).rgb * pc.params.x * pc.tint.rgb, base.a);
+  vec3 lit = base.rgb * texture(lightmap, lightmapUV).rgb * pc.params.x;
+  vec3 rgb = pc.tint.a > 0.0 ? base.rgb : lit;
+  outColor = vec4(rgb * pc.tint.rgb, base.a);
 }
