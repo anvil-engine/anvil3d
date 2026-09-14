@@ -51,6 +51,13 @@ int main() {
   CHECK(disabled.setEnabled(0, true) && disabled.enabled(0));
   CHECK(!disabled.setEnabled(99, true));
 
+  std::vector<bsp::Entity> buttons = {{{{"classname", "func_button"}}}};
+  world::EntityIo buttonIo(buttons);
+  CHECK(buttonIo.enabled(0));
+  CHECK(buttonIo.input(0, "SetUse", "0", 0, receive, &error) && !buttonIo.enabled(0));
+  CHECK(buttonIo.input(0, "SetUseNoFire", "true", 0, receive, &error) && buttonIo.enabled(0));
+  CHECK(!buttonIo.input(0, "SetUse", "maybe", 0, receive, &error) && !error.empty());
+
   entities[0].keys.push_back({"OnBroken", "door,Open,,oops,-1"});
   world::EntityIo malformed(entities);
   CHECK(!malformed.fire(0, "OnBroken", 0, receive, &error) && !error.empty());

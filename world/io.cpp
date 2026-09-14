@@ -223,7 +223,15 @@ bool EntityIo::input(size_t entity, std::string_view inputName, std::string_view
     fail(error, entity >= entities_.size() ? "entity input target is out of range" : "entity input time must be finite");
     return false;
   }
-  if (isTimer(entity) && equalInsensitive(inputName, "Enable")) {
+  if (isClass(entities_[entity], "func_button") &&
+      (equalInsensitive(inputName, "SetUse") || equalInsensitive(inputName, "SetUseNoFire"))) {
+    if (equalInsensitive(parameter, "1") || equalInsensitive(parameter, "true")) enabled_[entity] = true;
+    else if (equalInsensitive(parameter, "0") || equalInsensitive(parameter, "false")) enabled_[entity] = false;
+    else {
+      fail(error, "func_button SetUse requires a boolean parameter");
+      return false;
+    }
+  } else if (isTimer(entity) && equalInsensitive(inputName, "Enable")) {
     if (!enabled_[entity]) {
       enabled_[entity] = true;
       if (started_) nextTimer_[entity] = now + timerInterval(entity);

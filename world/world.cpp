@@ -1482,7 +1482,8 @@ void World::deliverInput(const InputDelivery& delivery) {
     });
     if (iequals(delivery.input, "Lock") || iequals(delivery.input, "Unlock")) {
       if (button != doors_.end()) button->locked = iequals(delivery.input, "Lock");
-    } else if (iequals(delivery.input, "Use") || iequals(delivery.input, "Press")) {
+    } else if (iequals(delivery.input, "Use") || iequals(delivery.input, "Press") ||
+               iequals(delivery.input, "Toggle")) {
       if (button == doors_.end()) warnOnce("func_button has no drawable BSP model");
       else if (linearDoorAllowsInput(io_->enabled(delivery.target), button->locked, "Open")) {
         const bool press = !button->toggle || button->state == DoorState::Closed || button->state == DoorState::Closing;
