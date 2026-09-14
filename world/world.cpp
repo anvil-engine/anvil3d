@@ -438,6 +438,10 @@ std::optional<render::Draw3D> World::material(const std::string& path, bool prop
     return slot = std::nullopt;
   }
   d.texture = base.empty() ? 0 : texture(base);
+  if (!d.texture2 && !m->get("$detail").empty()) {
+    d.texture2 = texture(m->get("$detail"));
+    d.texture2Detail = true;
+  }
   if (m->flag("$translucent") || m->flag("$additive")) {
     d.blend = render::Blend::Translucent; // ponytail: additive approximated as alpha blend; unsorted
   } else if (m->flag("$alphatest")) {

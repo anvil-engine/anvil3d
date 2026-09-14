@@ -109,6 +109,7 @@ struct Draw3D {
   float alphaRef = 0.5f;
   TextureHandle texture2 = 0; // 0 = no blend layer
   bool texture2Full = false;  // use texture2 as the authored base (unlit two-texture materials)
+  bool texture2Detail = false; // multiply the base by authored $detail
   bool selfIllum = false;     // authored $selfillum: base color bypasses lightmap
   float tint[3] = {1, 1, 1};  // per-draw RGB multiplier (e.g. a prop's ambient light)
 };

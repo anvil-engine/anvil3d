@@ -1155,7 +1155,7 @@ void VulkanDevice::draw3d(MeshHandle mesh, const Mat4& viewProj, std::span<const
     const VkDescriptorSet sets[3] = {texture(d.texture).set, texture(d.lightmap).set, texture(d.texture2).set};
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout3d_, 0, 3, sets, 0, nullptr);
     const float params[8] = {d.colorScale, d.blend == Blend::AlphaTest ? d.alphaRef : 0.0f, d.texture2 ? 1.0f : 0.0f,
-                             d.texture2Full ? 1.0f : 0.0f,
+                             d.texture2Full ? 1.0f : (d.texture2Detail ? -1.0f : 0.0f),
                              d.tint[0], d.tint[1], d.tint[2], d.selfIllum ? 1.0f : 0.0f};
     vkCmdPushConstants(cmd, pipelineLayout3d_, VK_SHADER_STAGE_FRAGMENT_BIT, 64, sizeof(params), params);
     vkCmdDrawIndexed(cmd, d.indexCount, 1, d.firstIndex, 0, 0);
