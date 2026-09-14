@@ -49,6 +49,9 @@ int main() {
   world::EntityIo disabled(entities);
   CHECK(!disabled.enabled(0));
   CHECK(disabled.setEnabled(0, true) && disabled.enabled(0));
+  CHECK(disabled.toggleEnabled(0) && !disabled.enabled(0));
+  CHECK(disabled.toggleEnabled(0) && disabled.enabled(0));
+  CHECK(!disabled.toggleEnabled(99));
   CHECK(!disabled.setEnabled(99, true));
   CHECK(disabled.setEnabled(0, false) && !disabled.enabled(0));
   CHECK(disabled.setEnabled(0, true) && disabled.enabled(0));

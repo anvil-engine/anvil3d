@@ -48,6 +48,7 @@ public:
   bool timerUsesRandomTime(size_t entity) const;
   bool enabled(size_t entity) const;
   bool setEnabled(size_t entity, bool enabled);
+  bool toggleEnabled(size_t entity);
 
 private:
   struct Pending {

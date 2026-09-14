@@ -1630,6 +1630,8 @@ void World::deliverInput(const InputDelivery& delivery) {
     io_->setEnabled(delivery.target, true);
   } else if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "Disable")) {
     io_->setEnabled(delivery.target, false);
+  } else if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "Toggle")) {
+    io_->toggleEnabled(delivery.target);
   } else if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "CancelPending")) {
     io_->cancelPending(delivery.target);
   } else if (iequals(entity.get("classname"), "logic_relay") && iequals(delivery.input, "Trigger") && io_->enabled(delivery.target)) {

@@ -378,6 +378,12 @@ bool EntityIo::setEnabled(size_t entity, bool enabled) {
   return true;
 }
 
+bool EntityIo::toggleEnabled(size_t entity) {
+  if (entity >= enabled_.size()) return false;
+  enabled_[entity] = !enabled_[entity];
+  return true;
+}
+
 bool EntityIo::fire(size_t source, std::string_view output, double now, const Callback& callback,
                     std::string* error, std::string_view value) {
   if (source >= entities_.size() || !std::isfinite(now)) {
