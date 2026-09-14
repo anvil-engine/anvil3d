@@ -24,6 +24,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <functional>
+#include <filesystem>
 #include <optional>
 #include <random>
 #include <set>
@@ -51,6 +52,33 @@ std::optional<std::string> resolveSoundScript(const FileSystem& fs, std::string_
     for (const auto& child : node.children) collect(child);
   };
   collect(*root);
+
+  // Some games omit entries from the manifest but keep authored game_sounds*.txt files.
+  // Discover only the conventional scripts directory and archive listings.
+  std::set<std::string> known(scripts.begin(), scripts.end());
+  auto addScript = [&](std::string path) {
+    path = lower(path);
+    if (path.starts_with("scripts/game_sounds") && path.ends_with(".txt") && known.insert(path).second)
+      scripts.push_back(std::move(path));
+  };
+  for (const auto& search : fs.searchPaths()) {
+    bool game = search.ids.empty();
+    for (const auto& id : search.ids) game = game || iequals(id, "GAME");
+    if (!game) continue;
+    if (search.archive) {
+      for (const auto& file : search.archive->files()) addScript(file);
+    } else {
+      std::error_code ec;
+      const auto dir = search.root / "scripts";
+      if (!std::filesystem::is_directory(dir, ec)) continue;
+      for (std::filesystem::directory_iterator it(dir, ec), end; it != end && !ec; it.increment(ec)) {
+        if (!it->is_regular_file(ec)) continue;
+        const auto filename = lower(it->path().filename().string());
+        if (filename.starts_with("game_sounds") && filename.ends_with(".txt"))
+          addScript("scripts/" + filename);
+      }
+    }
+  }
   for (const auto& script : scripts) {
     const auto text = fs.readFile(script, "GAME");
     if (!text) continue;
