@@ -1400,6 +1400,10 @@ void World::deliverInput(const InputDelivery& delivery) {
       if (!setEnvFadeColor(fade->config, delivery.parameter)) warnOnce("env_fade SetFadeColor requires three bounded integers");
     } else if (iequals(delivery.input, "SetFadeAlpha")) {
       if (!setEnvFadeAlpha(fade->config, delivery.parameter)) warnOnce("env_fade SetFadeAlpha requires an integer from 0 to 255");
+    } else if (iequals(delivery.input, "SetDuration")) {
+      if (!setEnvFadeDuration(fade->config, delivery.parameter)) warnOnce("env_fade SetDuration requires a finite non-negative number");
+    } else if (iequals(delivery.input, "SetHoldTime")) {
+      if (!setEnvFadeHoldTime(fade->config, delivery.parameter)) warnOnce("env_fade SetHoldTime requires a finite non-negative number");
     } else warnOnce("Unsupported entity input env_fade." + delivery.input);
   } else if (iequals(entity.get("classname"), "scripted_sequence")) {
     auto sequence = std::find_if(scriptedSequences_.begin(), scriptedSequences_.end(),

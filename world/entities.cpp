@@ -282,6 +282,24 @@ bool setEnvFadeAlpha(EnvFadeConfig& config, std::string_view value) {
   return true;
 }
 
+bool setEnvFadeDuration(EnvFadeConfig& config, std::string_view value) {
+  float parsedValue = 0;
+  const auto parsed = std::from_chars(value.data(), value.data() + value.size(), parsedValue);
+  if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || !std::isfinite(parsedValue) ||
+      parsedValue < 0) return false;
+  config.duration = parsedValue;
+  return true;
+}
+
+bool setEnvFadeHoldTime(EnvFadeConfig& config, std::string_view value) {
+  float parsedValue = 0;
+  const auto parsed = std::from_chars(value.data(), value.data() + value.size(), parsedValue);
+  if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || !std::isfinite(parsedValue) ||
+      parsedValue < 0) return false;
+  config.hold = parsedValue;
+  return true;
+}
+
 float envFadeOpacity(const EnvFadeConfig& config, double elapsed, bool reverse) {
   if (!std::isfinite(elapsed) || elapsed < 0) return reverse ? 1.0f : 0.0f;
   const double duration = config.duration;

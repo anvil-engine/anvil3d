@@ -492,6 +492,10 @@ int main(int argc, char** argv) {
     CHECK(!world::setEnvFadeColor(mutableFade, "256 0 0") && mutableFade.color[0] == 1);
     CHECK(world::setEnvFadeAlpha(mutableFade, "0") && mutableFade.alpha == 0);
     CHECK(!world::setEnvFadeAlpha(mutableFade, "nan") && mutableFade.alpha == 0);
+    CHECK(world::setEnvFadeDuration(mutableFade, "3.5") && near(mutableFade.duration, 3.5f));
+    CHECK(world::setEnvFadeHoldTime(mutableFade, "1.25") && near(mutableFade.hold, 1.25f));
+    CHECK(!world::setEnvFadeDuration(mutableFade, "nan") && near(mutableFade.duration, 3.5f));
+    CHECK(!world::setEnvFadeHoldTime(mutableFade, "-1") && near(mutableFade.hold, 1.25f));
     const auto view = world::viewControlConfig(bsp::parseEntities(
       R"({ "classname" "point_viewcontrol" "origin" "10 20 30" "angles" "4 5 6" "fov" "70" })")[0]);
     CHECK(view && near(view->origin.x, 10) && near(view->origin.y, 20) && near(view->origin.z, 30) &&
