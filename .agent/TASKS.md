@@ -87,5 +87,5 @@ User direction supersedes the earlier independent combat/menu prototype. Do not 
 3b. [x] Brush entities (models *N) placed by entity origin/angles (static). [x] Linear `func_door` movement with synced kinematic collision. [x] `func_tracktrain`/`path_track` movement. [x] `trigger_changelevel` transition. [x] 2D sky. [ ] sky_camera 3D skybox. [ ] render targets (_rt_camera).
 4. [x] Static props via studio loader (ambient-only lighting). [ ] Prop lighting: direct light / VHV per-vertex lighting; LODs.
 5. [x] PVS/frustum culling (per face; no areaportals, no occlusion).
-6. [ ] Lightmap styles / bumped lightmaps; HDR lighting lump path with tonemapping.
+6. [~] Initial lightmap styles 0..3 are composited from authored face data; runtime style switching, bumped lightmaps, and HDR lighting remain.
 6. [x] devui draws through render::2d.
