@@ -94,6 +94,7 @@ enum class Blend : uint8_t {
   Opaque,      // depth test + write, no blending
   AlphaTest,   // as Opaque, texels with alpha < alphaRef discarded
   Translucent, // depth test, no depth write, dst = src * a + dst * (1 - a); caller orders draws
+  Additive,    // depth test, no depth write, src + dst
   Background,  // no depth test, no depth write, no blending: draw first, behind the scene (skybox)
 };
 

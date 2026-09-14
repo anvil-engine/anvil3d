@@ -443,7 +443,7 @@ std::optional<render::Draw3D> World::material(const std::string& path, bool prop
     d.texture2Detail = true;
   }
   if (m->flag("$translucent") || m->flag("$additive")) {
-    d.blend = render::Blend::Translucent; // ponytail: additive approximated as alpha blend; unsorted
+    d.blend = m->flag("$additive") ? render::Blend::Additive : render::Blend::Translucent;
   } else if (m->flag("$alphatest")) {
     d.blend = render::Blend::AlphaTest;
     const std::string ref(m->get("$alphatestreference", "0.5"));

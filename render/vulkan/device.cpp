@@ -84,7 +84,7 @@ struct PipelineDesc {
   uint32_t stride;
   std::span<const VkVertexInputAttributeDescription> attributes;
   VkPipelineLayout layout;
-  bool depthTest, depthWrite, blend;
+  bool depthTest, depthWrite, blend, additive;
 };
 
 // Resources released once the frame that last could use them has completed.
@@ -193,6 +193,7 @@ private:
   VkPipeline pipeline2d_ = VK_NULL_HANDLE;
   VkPipeline pipelineOpaque_ = VK_NULL_HANDLE;      // Blend::Opaque and AlphaTest
   VkPipeline pipelineTranslucent_ = VK_NULL_HANDLE;
+  VkPipeline pipelineAdditive_ = VK_NULL_HANDLE;
   VkPipeline pipelineBackground_ = VK_NULL_HANDLE;
   VkDescriptorPool descriptorPool_ = VK_NULL_HANDLE;
   std::vector<std::pair<uint32_t, VkSampler>> samplers_; // key: filter/address/mip bits, created on demand
@@ -687,15 +688,16 @@ bool VulkanDevice::createPipelines() {
                                                         {1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, u)},
                                                         {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, lu)},
                                                         {3, 0, VK_FORMAT_R32_SFLOAT, offsetof(Vertex3D, blend)}};
-  pipeline2d_ = createPipeline({kUiVert, kUiFrag, sizeof(Vertex2D), attrs2d, pipelineLayout_, false, false, true});
-  pipelineOpaque_ = createPipeline({kWorldVert, kWorldFrag, sizeof(Vertex3D), attrs3d, pipelineLayout3d_, true, true, false});
-  pipelineTranslucent_ = createPipeline({kWorldVert, kWorldFrag, sizeof(Vertex3D), attrs3d, pipelineLayout3d_, true, false, true});
-  pipelineBackground_ = createPipeline({kWorldVert, kWorldFrag, sizeof(Vertex3D), attrs3d, pipelineLayout3d_, false, false, false});
-  return pipeline2d_ && pipelineOpaque_ && pipelineTranslucent_ && pipelineBackground_;
+  pipeline2d_ = createPipeline({kUiVert, kUiFrag, sizeof(Vertex2D), attrs2d, pipelineLayout_, false, false, true, false});
+  pipelineOpaque_ = createPipeline({kWorldVert, kWorldFrag, sizeof(Vertex3D), attrs3d, pipelineLayout3d_, true, true, false, false});
+  pipelineTranslucent_ = createPipeline({kWorldVert, kWorldFrag, sizeof(Vertex3D), attrs3d, pipelineLayout3d_, true, false, true, false});
+  pipelineAdditive_ = createPipeline({kWorldVert, kWorldFrag, sizeof(Vertex3D), attrs3d, pipelineLayout3d_, true, false, true, true});
+  pipelineBackground_ = createPipeline({kWorldVert, kWorldFrag, sizeof(Vertex3D), attrs3d, pipelineLayout3d_, false, false, false, false});
+  return pipeline2d_ && pipelineOpaque_ && pipelineTranslucent_ && pipelineAdditive_ && pipelineBackground_;
 }
 
 void VulkanDevice::destroyPipelines() {
-  for (VkPipeline* p : {&pipeline2d_, &pipelineOpaque_, &pipelineTranslucent_, &pipelineBackground_}) {
+  for (VkPipeline* p : {&pipeline2d_, &pipelineOpaque_, &pipelineTranslucent_, &pipelineAdditive_, &pipelineBackground_}) {
     if (*p) vkDestroyPipeline(device_, *p, nullptr);
     *p = VK_NULL_HANDLE;
   }
@@ -739,8 +741,8 @@ VkPipeline VulkanDevice::createPipeline(const PipelineDesc& d) {
     dss.depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL; // reverse Z
     VkPipelineColorBlendAttachmentState blend{};
     blend.blendEnable = d.blend;
-    blend.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    blend.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    blend.srcColorBlendFactor = d.additive ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_SRC_ALPHA;
+    blend.dstColorBlendFactor = d.additive ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     blend.colorBlendOp = VK_BLEND_OP_ADD;
     blend.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
     blend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
@@ -1149,6 +1151,7 @@ void VulkanDevice::draw3d(MeshHandle mesh, const Mat4& viewProj, std::span<const
   for (const Draw3D& d : draws) {
     if (d.indexCount == 0 || uint64_t(d.firstIndex) + d.indexCount > m.indexCount) continue;
     const VkPipeline p = d.blend == Blend::Translucent  ? pipelineTranslucent_
+                         : d.blend == Blend::Additive ? pipelineAdditive_
                          : d.blend == Blend::Background ? pipelineBackground_
                                                         : pipelineOpaque_;
     if (p != bound) vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, bound = p);
