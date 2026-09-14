@@ -334,7 +334,8 @@ bool EntityIo::input(size_t entity, std::string_view inputName, std::string_view
     const bool noFire = equalInsensitive(inputName, "SetValueNoFire");
     if (equalInsensitive(inputName, "Add")) value += operand;
     else if (equalInsensitive(inputName, "Subtract")) value -= operand;
-    else if (equalInsensitive(inputName, "SetValue") || noFire) value = operand;
+    else if (equalInsensitive(inputName, "SetValue") || equalInsensitive(inputName, "SetValueTest") || noFire)
+      value = operand;
     else if (equalInsensitive(inputName, "Multiply")) value *= operand;
     else if (equalInsensitive(inputName, "Divide")) {
       if (operand == 0) {

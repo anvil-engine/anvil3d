@@ -145,6 +145,10 @@ int main() {
   CHECK(logicIo.input(1, "Subtract", "20", 0, receive, &error));
   CHECK(delivered.back().input == "Minimum" && delivered.back().parameter == "0");
   CHECK(logicIo.input(1, "SetValue", "6", 0, receive, &error));
+  delivered.clear();
+  CHECK(logicIo.input(1, "SetValueTest", "10", 0, receive, &error));
+  CHECK(delivered.size() == 1 && delivered.back().input == "Maximum" && delivered.back().parameter == "fixed");
+  CHECK(logicIo.input(1, "SetValueNoFire", "6", 0, receive, &error));
   CHECK(logicIo.input(1, "Multiply", "1.5", 0, receive, &error));
   CHECK(logicIo.input(1, "Divide", "3", 0, receive, &error));
   CHECK(logicIo.input(1, "GetValue", "", 0, receive, &error));
