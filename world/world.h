@@ -157,6 +157,7 @@ private:
   struct Soundscape {
     size_t entity = 0;
     bsp::Vec3 origin{};
+    std::string name;
     float radius = 128;
     std::vector<size_t> sounds;
   };

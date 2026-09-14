@@ -1151,6 +1151,7 @@ void World::setupSoundscapes() {
     Soundscape soundscape;
     soundscape.entity = i;
     soundscape.origin = entityOrigin(entity).value_or(bsp::Vec3{});
+    soundscape.name = std::string(name);
     const std::string_view radius = entity.get("radius");
     if (!radius.empty()) {
       float value = 0;
@@ -1426,6 +1427,17 @@ void World::deliverInput(const InputDelivery& delivery) {
       io_->setEnabled(delivery.target, true);
       forcedSoundscape_ = true;
       activateSoundscape(size_t(found - soundscapes_.begin()));
+    } else if (iequals(delivery.input, "SetSoundscape")) {
+      const std::string_view name = delivery.parameter;
+      const auto selected = std::find_if(soundscapes_.begin(), soundscapes_.end(),
+                                         [&](const Soundscape& item) { return iequals(item.name, name); });
+      if (selected == soundscapes_.end()) {
+        warnOnce("env_soundscape SetSoundscape has no loaded soundscape: " + std::string(name));
+      } else {
+        io_->setEnabled(selected->entity, true);
+        forcedSoundscape_ = true;
+        activateSoundscape(size_t(selected - soundscapes_.begin()));
+      }
     } else if (iequals(delivery.input, "SetRadius")) {
       float radius = 0;
       const auto parsed = std::from_chars(delivery.parameter.data(), delivery.parameter.data() + delivery.parameter.size(), radius);
