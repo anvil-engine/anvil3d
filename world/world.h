@@ -220,6 +220,8 @@ private:
     double startedAt = 0;
     size_t nextEvent = 0;
     bool active = false;
+    bool paused = false;
+    double pausedAt = 0;
   };
   std::vector<ChoreographedScene> choreographedScenes_;
   struct FadeEffect {

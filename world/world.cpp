@@ -624,6 +624,8 @@ void World::beginChoreographedScene(size_t entity) {
   found->startedAt = ioTime_;
   found->nextEvent = 0;
   found->active = true;
+  found->paused = false;
+  found->pausedAt = 0;
   std::string error;
   if (!io_->fire(entity, "OnStart", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
     ANVIL_WARN("entity", "logic_choreographed_scene %zu OnStart: %s", entity, error.c_str());
@@ -634,6 +636,8 @@ void World::stopChoreographedScene(size_t entity, bool completed) {
                             [&](const ChoreographedScene& item) { return item.entity == entity; });
   if (found == choreographedScenes_.end() || !found->active) return;
   found->active = false;
+  found->paused = false;
+  found->pausedAt = 0;
   std::string error;
   const char* output = completed ? "OnCompletion" : "OnCanceled";
   if (!io_->fire(entity, output, ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
@@ -1321,7 +1325,22 @@ void World::deliverInput(const InputDelivery& delivery) {
     if (iequals(delivery.input, "Start")) beginChoreographedScene(delivery.target);
     else if (iequals(delivery.input, "Stop")) stopChoreographedScene(delivery.target, true);
     else if (iequals(delivery.input, "Cancel")) stopChoreographedScene(delivery.target, false);
-    else if (iequals(delivery.input, "Enable") || iequals(delivery.input, "Disable"))
+    else if (iequals(delivery.input, "Pause")) {
+      const auto found = std::find_if(choreographedScenes_.begin(), choreographedScenes_.end(),
+                                      [&](const ChoreographedScene& item) { return item.entity == delivery.target; });
+      if (found != choreographedScenes_.end() && found->active && !found->paused) {
+        found->paused = true;
+        found->pausedAt = ioTime_;
+      }
+    } else if (iequals(delivery.input, "Resume")) {
+      const auto found = std::find_if(choreographedScenes_.begin(), choreographedScenes_.end(),
+                                      [&](const ChoreographedScene& item) { return item.entity == delivery.target; });
+      if (found != choreographedScenes_.end() && found->active && found->paused) {
+        found->startedAt += ioTime_ - found->pausedAt;
+        found->paused = false;
+        found->pausedAt = 0;
+      }
+    } else if (iequals(delivery.input, "Enable") || iequals(delivery.input, "Disable"))
       io_->setEnabled(delivery.target, iequals(delivery.input, "Enable"));
     else warnOnce("Unsupported entity input logic_choreographed_scene." + delivery.input);
   } else if (iequals(entity.get("classname"), "point_viewcontrol")) {
@@ -1631,7 +1650,7 @@ void World::tick(float dt, physics::Scene* scene) {
     ANVIL_WARN("entity", "logic_timer: %s", error.c_str());
   io_->dispatch(ioTime_, [this](const InputDelivery& delivery) { deliverInput(delivery); });
   for (ChoreographedScene& choreo : choreographedScenes_) {
-    if (!choreo.active) continue;
+    if (!choreo.active || choreo.paused) continue;
     const double elapsed = ioTime_ - choreo.startedAt;
     while (choreo.nextEvent < choreo.scene.events.size() &&
            choreo.scene.events[choreo.nextEvent].start <= elapsed) {
