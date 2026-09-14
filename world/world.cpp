@@ -1463,6 +1463,17 @@ void World::deliverInput(const InputDelivery& delivery) {
           if (!io_->fire(train->entity, "OnStart", ioTime_, [this](const InputDelivery& next) { deliverInput(next); }, &error))
             ANVIL_WARN("entity", "func_tracktrain %zu OnStart: %s", train->entity, error.c_str());
         }
+        }
+    } else if (iequals(delivery.input, "TeleportToPathTrack")) {
+      const auto path = findPathTrack(entityLump_, delivery.parameter);
+      const auto origin = path ? entityOrigin(entityLump_[*path]) : std::nullopt;
+      if (!path || !origin) {
+        warnOnce("func_tracktrain TeleportToPathTrack requires a valid path_track");
+      } else {
+        train->path = *path;
+        auto& instance = entities_[train->instance];
+        instance.entity.transform.origin = {origin->x, origin->y, origin->z + train->height};
+        updateTrackTrainPose(size_t(std::distance(trackTrains_.begin(), train)), nullptr);
       }
     } else warnOnce("Unsupported entity input func_tracktrain." + delivery.input);
   } else if (iequals(entity.get("classname"), "func_button")) {
