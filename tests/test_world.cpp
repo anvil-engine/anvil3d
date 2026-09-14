@@ -487,6 +487,11 @@ int main(int argc, char** argv) {
       R"({ "classname" "env_fade" "duration" "nan" })")[0]));
     CHECK(!world::envFadeConfig(bsp::parseEntities(
       R"({ "classname" "env_fade" "rendercolor" "256 0 0" })")[0]));
+    world::EnvFadeConfig mutableFade{};
+    CHECK(world::setEnvFadeColor(mutableFade, "1 2 3") && mutableFade.color[2] == 3);
+    CHECK(!world::setEnvFadeColor(mutableFade, "256 0 0") && mutableFade.color[0] == 1);
+    CHECK(world::setEnvFadeAlpha(mutableFade, "0") && mutableFade.alpha == 0);
+    CHECK(!world::setEnvFadeAlpha(mutableFade, "nan") && mutableFade.alpha == 0);
     const auto view = world::viewControlConfig(bsp::parseEntities(
       R"({ "classname" "point_viewcontrol" "origin" "10 20 30" "angles" "4 5 6" "fov" "70" })")[0]);
     CHECK(view && near(view->origin.x, 10) && near(view->origin.y, 20) && near(view->origin.z, 30) &&

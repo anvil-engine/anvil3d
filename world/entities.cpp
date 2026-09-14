@@ -263,6 +263,25 @@ std::optional<EnvFadeConfig> envFadeConfig(const bsp::Entity& entity) {
   return out;
 }
 
+bool setEnvFadeColor(EnvFadeConfig& config, std::string_view value) {
+  const std::string text(value);
+  int r = 0, g = 0, b = 0;
+  char extra = 0;
+  if (std::sscanf(text.c_str(), " %d %d %d %c", &r, &g, &b, &extra) != 3 ||
+      r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) return false;
+  config.color = {uint8_t(r), uint8_t(g), uint8_t(b)};
+  return true;
+}
+
+bool setEnvFadeAlpha(EnvFadeConfig& config, std::string_view value) {
+  int parsedValue = 0;
+  const auto parsed = std::from_chars(value.data(), value.data() + value.size(), parsedValue);
+  if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || parsedValue < 0 || parsedValue > 255)
+    return false;
+  config.alpha = uint8_t(parsedValue);
+  return true;
+}
+
 float envFadeOpacity(const EnvFadeConfig& config, double elapsed, bool reverse) {
   if (!std::isfinite(elapsed) || elapsed < 0) return reverse ? 1.0f : 0.0f;
   const double duration = config.duration;

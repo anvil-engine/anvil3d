@@ -98,6 +98,8 @@ std::optional<ScriptedSequenceConfig> scriptedSequenceConfig(const bsp::Entity& 
 
 // Reads authored env_fade timing/color. Invalid or non-finite values are rejected.
 std::optional<EnvFadeConfig> envFadeConfig(const bsp::Entity& entity);
+bool setEnvFadeColor(EnvFadeConfig& config, std::string_view value);
+bool setEnvFadeAlpha(EnvFadeConfig& config, std::string_view value);
 // Evaluates the authored fade curve. A normal fade goes in, holds, then goes out unless stayOut is set.
 float envFadeOpacity(const EnvFadeConfig& config, double elapsed, bool reverse);
 

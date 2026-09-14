@@ -1372,6 +1372,10 @@ void World::deliverInput(const InputDelivery& delivery) {
       if (!io_->fire(fade->entity, "OnBeginFade", ioTime_,
                      [this](const InputDelivery& next) { deliverInput(next); }, &error))
         ANVIL_WARN("entity", "env_fade %zu OnBeginFade: %s", fade->entity, error.c_str());
+    } else if (iequals(delivery.input, "SetFadeColor")) {
+      if (!setEnvFadeColor(fade->config, delivery.parameter)) warnOnce("env_fade SetFadeColor requires three bounded integers");
+    } else if (iequals(delivery.input, "SetFadeAlpha")) {
+      if (!setEnvFadeAlpha(fade->config, delivery.parameter)) warnOnce("env_fade SetFadeAlpha requires an integer from 0 to 255");
     } else warnOnce("Unsupported entity input env_fade." + delivery.input);
   } else if (iequals(entity.get("classname"), "scripted_sequence")) {
     auto sequence = std::find_if(scriptedSequences_.begin(), scriptedSequences_.end(),
